@@ -1,5 +1,5 @@
 from elasticsearch import Elasticsearch, ElasticsearchException
-from .observe import View
+from .observe import Dispatcher, View
 import pprint
 import logging
 
@@ -24,8 +24,8 @@ class ElasticSearchUpdater(View):
             log.error("ElasticSearch threw exception")
             log.error(es1)
 
-    def register(self, model):
-        model.registerView('save', self)
+    def register(self):
+        Dispatcher.registerView('save', self)
 
 
 class ElasticSetup:

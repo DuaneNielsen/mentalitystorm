@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 import imageio
 from PIL import Image
 
-"""Dispatcher allows dipatch to views.
+
+
+""" Dispatcher allows dipatch to views.
 View's register here
 To send a message, inherit Observable and use updateObservers
 """
@@ -16,16 +18,20 @@ class Dispatcher:
     def __init__(self):
         self.pipelineView = {}
 
-    def registerView(self, tag, observer):
-        if tag not in self.pipelineView:
-            self.pipelineView[tag] = []
-        self.pipelineView[tag].append(observer)
+    @staticmethod
+    def registerView(tag, observer):
+        if tag not in dispatcher.pipelineView:
+            dispatcher.pipelineView[tag] = []
+        dispatcher.pipelineView[tag].append(observer)
 
-        return tag,len(self.pipelineView[tag]) -1
+        return tag, len(dispatcher.pipelineView[tag]) -1
 
-    def unregisterView(self, id):
-        del self.pipelineView[id[0]][id[1]]
+    @staticmethod
+    def unregisterView(id):
+        del dispatcher.pipelineView[id[0]][id[1]]
 
+print('init Dispatacher')
+dispatcher = Dispatcher()
 
 """ Observable provides dispatch method.
 To use, make sure the object has a Dispatcher 
@@ -43,20 +49,18 @@ class Observable:
         self.updateObservers(tag, image, metadata)
 
     def updateObservers(self, tag, data, metadata=None):
-        if hasattr(self, 'pipelineView'):
-            if tag not in self.pipelineView:
-                self.pipelineView[tag] = []
-            for observer in self.pipelineView[tag]:
-                observer.update(data, metadata)
+        if tag not in dispatcher.pipelineView:
+            dispatcher.pipelineView[tag] = []
+        for observer in dispatcher.pipelineView[tag]:
+            observer.update(data, metadata)
 
     """ Sends a close event to all observers.
     used to close video files or save at the end of rollouts
     """
     def endObserverSession(self):
-        if hasattr(self, 'pipelineView'):
-            for tag in self.pipelineView:
-                for observer in self.pipelineView[tag]:
-                    observer.endSession()
+        for tag in dispatcher.pipelineView:
+            for observer in dispatcher.pipelineView[tag]:
+                observer.endSession()
 
 
 """ Abstract base class for implementing View.
@@ -64,6 +68,7 @@ class Observable:
 
 
 class View(ABC):
+
     @abstractmethod
     def update(self, data, metadata):
         raise NotImplementedError
@@ -170,15 +175,18 @@ class TensorBoard(View, SummaryWriter):
         self.dispatch = {'tb_step': self.step, 'tb_scalar':self.scalar, 'image':self.image}
         self.global_step = None
 
-    def register(self, model):
-        model.registerView('tb_step', self)
-        model.registerView('tb_training_loss', self)
-        model.registerView('tb_test_loss', self)
-        model.registerView('input', self)
-        model.registerView('output', self)
-        model.registerView('z', self)
-        model.registerView('tb_train_time', self)
-        model.registerView('tb_train_time_per_item', self)
+    def register(self):
+        Dispatcher.registerView('tb_step', self)
+        Dispatcher.registerView('tb_training_loss', self)
+        Dispatcher.registerView('tb_test_loss', self)
+        Dispatcher.registerView('input', self)
+        Dispatcher.registerView('output', self)
+        Dispatcher.registerView('z', self)
+        Dispatcher.registerView('tb_train_time', self)
+        Dispatcher.registerView('tb_train_time_per_item', self)
+        Dispatcher.registerView('BCELoss', self)
+        Dispatcher.registerView('KLDLoss', self)
+        Dispatcher.registerView('MSELoss', self)
 
 
     def update(self, data, metadata):
@@ -205,6 +213,7 @@ requires that the object also inherit Observable
 # noinspection PyUnresolvedReferences
 class TensorBoardObservable:
     def __init__(self):
+        ## this isn't a great solution, need to come up with something better
         self.global_step = 0
         if hasattr(self, 'metadata') and 'tb_global_step' in self.metadata:
             self.global_step = self.metadata['tb_global_step']

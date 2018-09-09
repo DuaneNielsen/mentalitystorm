@@ -1,6 +1,7 @@
 import torch
 import torch.utils.data as du
 from mentalitystorm import TensorBoardObservable
+from .losses import Lossable
 import time
 
 
@@ -42,6 +43,7 @@ class Trainable(TensorBoardObservable):
         return loader
 
     def train_model(self, dataset, batch_size, device, lossfunc, optimizer):
+        assert isinstance(lossfunc, Lossable)
         self.to(device)
         self.train()
         train_set = du.Subset(dataset, range(len(dataset) // 10, len(dataset) -1))
@@ -65,6 +67,7 @@ class Trainable(TensorBoardObservable):
             self.writePerformanceToTB(loop_time, data.shape[0])
 
     def test_model(self, dataset, batch_size, device, lossfunc):
+        assert isinstance(lossfunc, Lossable)
         with torch.no_grad():
             self.eval()
             self.to(device)
@@ -90,5 +93,16 @@ class Trainable(TensorBoardObservable):
 
             return losses
 
+    def demo_model(self, dataset, batch_size, device):
+        with torch.no_grad():
+            self.eval()
+            self.to(device)
+            test_set = du.Subset(dataset, range(0, len(dataset) // 10))
+            test_loader = self.loader(test_set, batch_size)
 
+            for batch_idx, (data, target) in enumerate(test_loader):
+                data = data.to(device)
+                output = self(data)
+                import time
+                time.sleep(1)
 

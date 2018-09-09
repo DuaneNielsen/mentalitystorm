@@ -6,9 +6,24 @@ from torchvision import transforms as TVT
 from pathlib import Path
 import json
 import logging
-from logging.handlers import TimedRotatingFileHandler
 
-class Config:
+class Singleton(type):
+    """
+    Define an Instance operation that lets clients access its unique
+    instance.
+    """
+
+    def __init__(cls, name, bases, attrs, **kwargs):
+        super().__init__(name, bases, attrs)
+        cls._instance = None
+
+    def __call__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__call__(*args, **kwargs)
+        return cls._instance
+
+
+class Config(metaclass=Singleton):
     def __init__(self):
         # environment variables
         self.BUILD_TAG = os.environ.get('BUILD_TAG', 'build_tag').replace('"', '')
@@ -59,6 +74,16 @@ class Config:
                ' GIT_COMMIT ' + str(self.GIT_COMMIT) + \
                ' TORCH_DEVICE ' + str(self.TORCH_DEVICE)
 
+    def basepath(self):
+        return Path(self.DATA_PATH)
+
+    def datapath(self, datapath):
+        datadir = Path(self.DATA_PATH).joinpath(datapath)
+        return datadir.absolute()
+
+    def modelpath(self):
+        return self.basepath() / 'models'
+
     def dataset(self, datapath):
         datadir = Path(self.DATA_PATH).joinpath(datapath)
         dataset = torchvision.datasets.ImageFolder(
@@ -88,3 +113,5 @@ class Config:
     def load(filename):
         with open(filename, 'r') as configfile:
             return json.load(fp=configfile)
+
+config = Config()

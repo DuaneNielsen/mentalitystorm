@@ -5,7 +5,7 @@ import hashlib
 import unicodedata
 import re
 import logging
-from mentalitystorm import Observable
+from mentalitystorm import Observable, config
 
 log = logging.getLogger('Storage')
 
@@ -34,7 +34,7 @@ ie: nn.Module.__init__(self)
 fixing to make less fragile is on todo, but not trivial...
 """
 class Storeable(Observable):
-    def __init__(self, *args):
+    def __init__(self):
         self.classname = type(self)
 
         #snag the args from the child class during initialization
@@ -43,14 +43,13 @@ class Storeable(Observable):
         argname, _, _, argvalues = inspect.getargvalues(child_callable)
 
         self.repr_string = ""
+        arglist = []
         for key in argname:
             if key != 'self':
                 self.repr_string += ' (' + key + '): ' + str(argvalues[key])
+                arglist.append(argvalues[key])
 
-        # too lazy to finish the job and figure out how to store them properly
-        # so that they can be used to re-initialize a new class
-        # so we will have to pass all the args in for now
-        self.args = args
+        self.args = tuple(arglist)
         self.metadata = {}
         self.metadata['guid'] = self.guid()
         self.metadata['class_guid'] = self.class_guid()
@@ -99,8 +98,7 @@ class Storeable(Observable):
     @staticmethod
     def fn(filename, data_dir):
         if data_dir is None:
-            home = Path.cwd()
-            data = home / "data"
+            data = config.modelpath()
         else:
             data = Path(data_dir)
 
@@ -108,7 +106,7 @@ class Storeable(Observable):
             import random, string
             filename = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
 
-        fn = data / "models" / filename
+        fn = data / filename
         return fn
 
     def save(self, filename=None, data_dir=None):
@@ -129,8 +127,8 @@ class Storeable(Observable):
     def load(filename, data_dir=None):
         with Storeable.fn(filename, data_dir).open('rb') as f:
             try:
-                _ =  pickle.load(f)
-                model =  pickle.load(f)
+                _ = pickle.load(f)
+                model = pickle.load(f)
             except Exception as e:
                 message = "got exception when loading {} from {}".format(filename, data_dir)
                 log.error(message)
@@ -156,12 +154,11 @@ class Storeable(Observable):
 
 
 class ModelDb:
-    def __init__(self, data_dir):
+    def __init__(self):
         self.metadatas = []
-        self.datapath = Path(data_dir) / 'models'
-        self.data_dir = data_dir
+        self.datapath = config.modelpath()
         for file in self.datapath.iterdir():
-            self.metadatas.append(Storeable.load_metadata(file.name, data_dir))
+            self.metadatas.append(Storeable.load_metadata(file.name))
 
     def print_data(self):
         for metadata in self.metadatas:
@@ -169,7 +166,7 @@ class ModelDb:
                 print(field, value)
 
     def print_data_for(self, filename):
-        metadata = Storeable.load_metadata(filename, self.data_dir)
+        metadata = Storeable.load_metadata(filename)
         for field, value in metadata.items():
             print(field, value)
 
@@ -227,7 +224,6 @@ class ModelDb:
                 print(res)
             except ElasticsearchException as es1:
                 print(es1)
-
 
 
 

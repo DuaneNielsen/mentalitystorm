@@ -3,12 +3,11 @@ from abc import ABC
 import torch
 from tqdm import tqdm
 
-from mentalitystorm import Storeable, MSELoss, Config, TensorBoard, OpenCV, ElasticSearchUpdater
+from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, ElasticSearchUpdater, Dispatcher
 
 
-class Runner(ABC):
-    def __run__(self, config, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
-
+class Trainer(ABC):
+    def __run__(self, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
         device = config.device()
         if isinstance(model, Storeable):
             run_name = config.run_id_string(model)
@@ -16,6 +15,7 @@ class Runner(ABC):
             model.metadata['run_url'] = config.run_url_link(model)
             model.metadata['git_commit_hash'] = config.GIT_COMMIT
             model.metadata['dataset'] = str(dataset.root)
+            model.metadata['loss_class'] = type(lossfunc).__name__
 
         for epoch in tqdm(range(epochs)):
             model.train_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc, optimizer=optimizer)
@@ -32,10 +32,14 @@ class Runner(ABC):
                 model.metadata['epoch'] = 1
             else:
                 model.metadata['epoch'] += 1
-            model.save(data_dir=config.DATA_PATH)
+            model.save()
+
+    def __demo__(self, model, dataset):
+        device = config.device()
+        model.demo_model(dataset, 1, device)
 
 
-class ModelFactoryRunner(Runner):
+class ModelFactoryTrainer(Trainer):
     def __init__(self, model_type):
         self.model_type = model_type
         self.model_args = []
@@ -48,20 +52,20 @@ class ModelFactoryRunner(Runner):
     def __next__(self):
         if self.model_args_index < len(self.model_args):
             model = self.model_type(*self.model_args[self.model_args_index])
-            optim =  torch.optim.Adam(model.parameters(), lr=1e-3)
+            optim = torch.optim.Adam(model.parameters(), lr=1e-3)
             self.model_args_index += 1
             return model, optim
         else:
             raise StopIteration()
 
-    def run(self, config, dataset, batch_size, lossfunc=MSELoss, epochs=2):
+    def run(self, dataset, batch_size, lossfunc=MSELoss, epochs=2):
         for model, optimizer in self:
-            self.__run__(config, model, dataset, batch_size, lossfunc, optimizer, epochs)
+            self.__run__(model, dataset, batch_size, lossfunc, optimizer, epochs)
 
 
-class OneShotRunner(Runner):
-    def run(self, config, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
-        self.__run__(config, model, dataset, batch_size, lossfunc, optimizer, epochs)
+class OneShotTrainer(Trainer):
+    def run(self, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
+        self.__run__(model, dataset, batch_size, lossfunc, optimizer, epochs)
 
 
 """ Runner with good defaults
@@ -69,19 +73,26 @@ Uses batch size 16, runs for 10 epochs, using MSELoss and Adam Optimizer with lr
 """
 
 
-class OneShotEasyRunner(Runner):
+class OneShotEasyTrainer(Trainer):
     def run(self, model, dataset, batch_size=16, epochs=10, lossfunc=None):
-        config = Config()
         config.increment('run_id')
 
         tb = TensorBoard(config.tb_run_dir(model))
-        tb.register(model)
-        model.registerView('input', OpenCV('input', (160, 210)))
-        model.registerView('output', OpenCV('output', (160, 210)))
-        ElasticSearchUpdater().register(model)
+        tb.register()
+
+        Dispatcher.registerView('input', OpenCV('input', (320, 420)))
+        Dispatcher.registerView('output', OpenCV('output', (320, 420)))
+        ElasticSearchUpdater().register()
 
         if lossfunc is None:
             lossfunc = MSELoss()
 
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-        self.__run__(config, model, dataset, batch_size, lossfunc, optimizer, epochs)
+        self.__run__(model, dataset, batch_size, lossfunc, optimizer, epochs)
+
+
+class Demo(Trainer):
+    def demo(self, model, dataset):
+        Dispatcher.registerView('input', OpenCV('input', (320, 420)))
+        Dispatcher.registerView('output', OpenCV('output', (320, 420)))
+        self.__demo__(model, dataset)
