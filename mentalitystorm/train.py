@@ -3,7 +3,7 @@ import torch.utils.data as du
 from mentalitystorm import TensorBoardObservable
 from .losses import Lossable
 import time
-
+import numpy as np
 
 class Checkable():
     def __init__(self):
@@ -75,23 +75,32 @@ class Trainable(TensorBoardObservable):
             test_loader = self.loader(test_set, batch_size)
             losses = []
 
+            hist = None
+
             for batch_idx, (data, target) in enumerate(test_loader):
                 start = time.time()
                 data = data.to(device)
                 output = self(data)
                 if type(output) == tuple:
                     loss = lossfunc.loss(*output, data)
+                    z = output[1]
+                    latentvar = z.squeeze().cpu().numpy()
+                    if hist is None:
+                        hist = latentvar
+                    else:
+                        hist = np.append(hist, latentvar, axis=0)
                 else:
                     loss = lossfunc.loss(output, data)
 
                 losses.append(loss.item())
+
                 self.writeTestLossToTB(loss/data.shape[0])
                 self.tb_global_step()
                 stop = time.time()
                 loop_time = stop - start
                 self.writePerformanceToTB(loop_time, data.shape[0])
 
-            return losses
+            return losses, hist
 
     def demo_model(self, dataset, batch_size, device):
         with torch.no_grad():

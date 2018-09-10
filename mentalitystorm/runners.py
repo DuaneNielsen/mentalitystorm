@@ -3,10 +3,12 @@ from abc import ABC
 import torch
 from tqdm import tqdm
 
-from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, ElasticSearchUpdater, Dispatcher
+from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, ElasticSearchUpdater, \
+    Dispatcher, Observable, TensorBoardObservable
 
+import numpy as np
 
-class Trainer(ABC):
+class Trainer(ABC, Observable, TensorBoardObservable):
     def __run__(self, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
         device = config.device()
         if isinstance(model, Storeable):
@@ -19,7 +21,11 @@ class Trainer(ABC):
 
         for epoch in tqdm(range(epochs)):
             model.train_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc, optimizer=optimizer)
-            losses = model.test_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc)
+            losses, histograms = model.test_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc)
+
+            if losses is None:
+                raise Exception('Test loop did not run, this is probably because there is not a full batch,'
+                                'decrease batch size and try again')
 
             l = torch.Tensor(losses)
 
@@ -27,6 +33,9 @@ class Trainer(ABC):
             import math
             if not math.isnan(ave_test_loss):
                 model.metadata['ave_test_loss'] = ave_test_loss
+
+            for i, histogram in enumerate(np.rollaxis(histograms, 1)):
+                self.writeHistogram('latentvar' + str(i), histogram, epoch)
 
             if 'epoch' not in model.metadata:
                 model.metadata['epoch'] = 1

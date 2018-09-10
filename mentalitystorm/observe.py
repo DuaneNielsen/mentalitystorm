@@ -172,7 +172,10 @@ class TensorBoard(View, SummaryWriter):
         View.__init__(self)
         SummaryWriter.__init__(self, run, comment)
         self.image_freq = image_freq
-        self.dispatch = {'tb_step': self.step, 'tb_scalar':self.scalar, 'image':self.image}
+        self.dispatch = {'tb_step': self.step,
+                         'tb_scalar': self.scalar,
+                         'image': self.image,
+                         'histogram': self.histogram}
         self.global_step = None
 
     def register(self):
@@ -187,6 +190,7 @@ class TensorBoard(View, SummaryWriter):
         Dispatcher.registerView('BCELoss', self)
         Dispatcher.registerView('KLDLoss', self)
         Dispatcher.registerView('MSELoss', self)
+        Dispatcher.registerView('histogram', self)
 
 
     def update(self, data, metadata):
@@ -204,6 +208,15 @@ class TensorBoard(View, SummaryWriter):
     def image(self, value, metadata):
         if self.global_step and self.global_step % self.image_freq == 0 and not metadata['training']:
             self.add_image(metadata['name'], value, self.global_step)
+
+    def histogram(self, data, metadata):
+        tag = metadata['tag']
+        step = metadata['step']
+        if 'bins' in metadata:
+            bins = metadata['bins']
+            self.add_histogram(tag, data, step, bins)
+        else:
+            self.add_histogram(tag, data, step)
 
 """ Convenience methods for dispatch to tensorboard
 requires that the object also inherit Observable
@@ -240,6 +253,14 @@ class TensorBoardObservable:
         if batch_size != 0:
             self.writeScalarToTB('tb_train_time_per_item', time/batch_size, 'perf/train_time_per_item')
 
+    def writeHistogram(self, label, data, epoch, bins=None):
+        metadata = {}
+        metadata['func'] = 'histogram'
+        metadata['tag'] = label
+        metadata['step'] = epoch
+        if bins is not None:
+            metadata['bins'] = bins
+        self.updateObservers('histogram', data, metadata)
 
 
 class SummaryWriterWithGlobal(SummaryWriter):
