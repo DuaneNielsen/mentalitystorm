@@ -29,8 +29,11 @@ class BceKldLoss(Lossable, Observable, TensorBoardObservable):
 
         return BCE + KLD
 
+
+
 class MseKldLoss(Lossable, Observable, TensorBoardObservable):
-    def __init__(self):
+    def __init__(self, beta=1.0):
+        self.beta = beta
         Observable.__init__(self)
         TensorBoardObservable.__init__(self)
 
@@ -45,10 +48,13 @@ class MseKldLoss(Lossable, Observable, TensorBoardObservable):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
+        # beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework
+        # https: // openreview.net / forum?id = Sy2fzU9gl
+        KLD = KLD * self.beta
+
         self.writeScalarToTB('KLDLoss', KLD.item(), 'loss/KLDLoss')
 
         return MSE + KLD
-
 
 class BcelKldLoss(Lossable):
     # Reconstruction + KL divergence losses summed over all elements and batch

@@ -11,6 +11,26 @@ import numpy as np
 class Trainer(ABC, Observable, TensorBoardObservable):
     def __run__(self, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
         device = config.device()
+        self.init_run_data(dataset, lossfunc, model)
+
+        for epoch in tqdm(range(epochs)):
+            model.train_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc, optimizer=optimizer)
+            losses, histograms = model.test_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc)
+
+            self.update_ave_test_loss(losses, model)
+
+            self.send_histogram(epoch, histograms)
+
+            self.increment_epoch(model)
+            model.save()
+
+    def send_histogram(self, epoch, histograms):
+        histograms = np.rollaxis(histograms, 1)
+        for i, histogram in enumerate(histograms):
+            self.writeHistogram('latentvar' + str(i), histogram, epoch)
+        self.writeText('z_corr', str(np.corrcoef(histograms)), epoch)
+
+    def init_run_data(self, dataset, lossfunc, model):
         if isinstance(model, Storeable):
             run_name = config.run_id_string(model)
             model.metadata['run_name'] = run_name
@@ -18,30 +38,23 @@ class Trainer(ABC, Observable, TensorBoardObservable):
             model.metadata['git_commit_hash'] = config.GIT_COMMIT
             model.metadata['dataset'] = str(dataset.root)
             model.metadata['loss_class'] = type(lossfunc).__name__
+            #todo add loss parameters here
 
-        for epoch in tqdm(range(epochs)):
-            model.train_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc, optimizer=optimizer)
-            losses, histograms = model.test_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc)
+    def update_ave_test_loss(self, losses, model):
+        if losses is None:
+            raise Exception('Test loop did not run, this is probably because there is not a full batch,'
+                            'decrease batch size and try again')
+        l = torch.Tensor(losses)
+        ave_test_loss = l.mean().item()
+        import math
+        if not math.isnan(ave_test_loss):
+            model.metadata['ave_test_loss'] = ave_test_loss
 
-            if losses is None:
-                raise Exception('Test loop did not run, this is probably because there is not a full batch,'
-                                'decrease batch size and try again')
-
-            l = torch.Tensor(losses)
-
-            ave_test_loss = l.mean().item()
-            import math
-            if not math.isnan(ave_test_loss):
-                model.metadata['ave_test_loss'] = ave_test_loss
-
-            for i, histogram in enumerate(np.rollaxis(histograms, 1)):
-                self.writeHistogram('latentvar' + str(i), histogram, epoch)
-
-            if 'epoch' not in model.metadata:
-                model.metadata['epoch'] = 1
-            else:
-                model.metadata['epoch'] += 1
-            model.save()
+    def increment_epoch(self, model):
+        if 'epoch' not in model.metadata:
+            model.metadata['epoch'] = 1
+        else:
+            model.metadata['epoch'] += 1
 
     def __demo__(self, model, dataset):
         device = config.device()

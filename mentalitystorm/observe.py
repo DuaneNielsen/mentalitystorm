@@ -175,7 +175,9 @@ class TensorBoard(View, SummaryWriter):
         self.dispatch = {'tb_step': self.step,
                          'tb_scalar': self.scalar,
                          'image': self.image,
-                         'histogram': self.histogram}
+                         'histogram': self.histogram,
+                         'text': self.text
+                         }
         self.global_step = None
 
     def register(self):
@@ -191,6 +193,7 @@ class TensorBoard(View, SummaryWriter):
         Dispatcher.registerView('KLDLoss', self)
         Dispatcher.registerView('MSELoss', self)
         Dispatcher.registerView('histogram', self)
+        Dispatcher.registerView('text', self)
 
 
     def update(self, data, metadata):
@@ -217,6 +220,11 @@ class TensorBoard(View, SummaryWriter):
             self.add_histogram(tag, data, step, bins)
         else:
             self.add_histogram(tag, data, step)
+
+    def text(self, data, metadata):
+        tag = metadata['tag']
+        step = metadata['step']
+        self.add_text(tag, data, step)
 
 """ Convenience methods for dispatch to tensorboard
 requires that the object also inherit Observable
@@ -261,6 +269,13 @@ class TensorBoardObservable:
         if bins is not None:
             metadata['bins'] = bins
         self.updateObservers('histogram', data, metadata)
+
+    def writeText(self, label, data, step):
+        metadata = {}
+        metadata['func'] = 'text'
+        metadata['tag'] = label
+        metadata['step'] = step
+        self.updateObservers('text', data, metadata)
 
 
 class SummaryWriterWithGlobal(SummaryWriter):
