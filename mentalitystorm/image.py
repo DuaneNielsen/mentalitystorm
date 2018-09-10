@@ -43,6 +43,8 @@ class NumpyRGBWrapper(BaseImageWrapper):
             self.numpyRGB = tensorPILTonumpyRBG(tensor_PIL)
         elif self.format == 'numpyGreyscale':
             self.numpyRGB = np.repeat(image, 3, axis=0)
+            self.numpyRGB = np.transpose(self.numpyRGB, [1, 2, 0])
+            self.numpyRGB = np.ndarray.astype(self.numpyRGB, dtype='float32')
         elif self.format == 'numpyRGB3':
             self.numpyRGB = np.transpose(image, [2,0,1])
         else:

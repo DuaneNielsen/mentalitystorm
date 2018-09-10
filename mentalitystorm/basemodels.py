@@ -4,7 +4,7 @@ from torch import nn as nn
 from mentalitystorm import Dispatcher, Observable, Trainable, TensorBoardObservable
 
 
-class BaseVAE(nn.Module, Dispatcher, Observable, Trainable, TensorBoardObservable):
+class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservable):
     def __init__(self, encoder, decoder, variational=False):
         nn.Module.__init__(self)
         Dispatcher.__init__(self)
@@ -52,3 +52,8 @@ class BaseVAE(nn.Module, Dispatcher, Observable, Trainable, TensorBoardObservabl
             return eps.mul(std).add_(mu)
         else:
             return mu
+
+    def sample(self, eps):
+        images = self.decoder(eps)
+        self.updateObserversWithImage('sample_image', images[0].data, training=self.training, always_write=True)
+        return images

@@ -40,8 +40,9 @@ To use, make sure the object has a Dispatcher
 
 class Observable:
 
-    def updateObserversWithImage(self, tag, image, format=None, training=True):
+    def updateObserversWithImage(self, tag, image, format=None, training=True, always_write=False):
         metadata = {}
+        metadata['always'] = always_write
         metadata['func'] = 'image'
         metadata['name'] = tag
         metadata['format'] = format
@@ -194,6 +195,8 @@ class TensorBoard(View, SummaryWriter):
         Dispatcher.registerView('MSELoss', self)
         Dispatcher.registerView('histogram', self)
         Dispatcher.registerView('text', self)
+        Dispatcher.registerView('z_cor_scalar', self)
+        Dispatcher.registerView('z_corr', self)
 
 
     def update(self, data, metadata):
@@ -209,6 +212,8 @@ class TensorBoard(View, SummaryWriter):
             self.add_scalar(metadata['name'], value, self.global_step)
 
     def image(self, value, metadata):
+        if 'always' in metadata and metadata['always']:
+            self.add_image(metadata['name'], value, self.global_step)
         if self.global_step and self.global_step % self.image_freq == 0 and not metadata['training']:
             self.add_image(metadata['name'], value, self.global_step)
 
@@ -230,7 +235,7 @@ class TensorBoard(View, SummaryWriter):
 requires that the object also inherit Observable
 """
 
-
+#todo replace this with a wrapper, and dispatch from there instead
 # noinspection PyUnresolvedReferences
 class TensorBoardObservable:
     def __init__(self):

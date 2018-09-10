@@ -95,6 +95,7 @@ class Storeable(Observable):
         self.metadata = state[0]
         self.load_state_dict(state[2])
 
+    #todo should we just use absolute paths and do this in config?
     @staticmethod
     def fn(filename, data_dir):
         if data_dir is None:
@@ -109,6 +110,7 @@ class Storeable(Observable):
         fn = data / filename
         return fn
 
+    #todo move save to run dir
     def save(self, filename=None, data_dir=None):
         path = Storeable.fn(filename, data_dir)
         self.metadata['filename'] = path.name

@@ -7,6 +7,7 @@ from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, Elas
     Dispatcher, Observable, TensorBoardObservable
 
 import numpy as np
+from tabulate import tabulate
 
 class Trainer(ABC, Observable, TensorBoardObservable):
     def __run__(self, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
@@ -28,7 +29,29 @@ class Trainer(ABC, Observable, TensorBoardObservable):
         histograms = np.rollaxis(histograms, 1)
         for i, histogram in enumerate(histograms):
             self.writeHistogram('latentvar' + str(i), histogram, epoch)
-        self.writeText('z_corr', str(np.corrcoef(histograms)), epoch)
+
+        cor = np.corrcoef(histograms)
+
+        table = ''
+        for i, histogram in enumerate(histograms):
+            table = table + '|' + str(i)
+        table = table + '|\n'
+        table = table + tabulate(cor, tablefmt='pipe')
+        self.writeText('z_corr', table, epoch)
+
+        # take the lower triangle
+        I = np.identity(cor.shape[0])
+        cor_scalar = cor - I
+        cor_scalar = np.square(cor)
+        cor_scalar = np.sqrt(cor_scalar)
+        cor_scalar = np.sum(cor_scalar) /cor_scalar.size / 2.0
+        self.writeScalarToTB('z_cor_scalar', cor_scalar, 'z/z_ave_correlation')
+
+
+        image = np.expand_dims(cor, axis=0)
+        image = np.square(image)
+        image = np.sqrt(image)
+        self.updateObserversWithImage('z_corr', image, always_write=True)
 
     def init_run_data(self, dataset, lossfunc, model):
         if isinstance(model, Storeable):
@@ -59,6 +82,9 @@ class Trainer(ABC, Observable, TensorBoardObservable):
     def __demo__(self, model, dataset):
         device = config.device()
         model.demo_model(dataset, 1, device)
+
+    def __sample__(self, model, z_dims):
+        model.sample_model(z_dims)
 
 
 class ModelFactoryTrainer(Trainer):
@@ -118,3 +144,10 @@ class Demo(Trainer):
         Dispatcher.registerView('input', OpenCV('input', (320, 420)))
         Dispatcher.registerView('output', OpenCV('output', (320, 420)))
         self.__demo__(model, dataset)
+
+    def sample(self, model, z_dims, samples=1):
+        Dispatcher.registerView('sample_image', OpenCV('sample', (320, 420)))
+        for _ in range(samples):
+            self.__sample__(model, z_dims)
+            import time
+            time.sleep(1)

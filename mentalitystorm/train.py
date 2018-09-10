@@ -1,6 +1,6 @@
 import torch
 import torch.utils.data as du
-from mentalitystorm import TensorBoardObservable
+from mentalitystorm import Observable, TensorBoardObservable, config
 from .losses import Lossable
 import time
 import numpy as np
@@ -28,7 +28,7 @@ class Checkable():
         gradcheck(self.double(), *args, eps=1e-6, atol=1e-4)
 
 
-class Trainable(TensorBoardObservable):
+class Trainable(Observable, TensorBoardObservable):
 
     @staticmethod
     def loader(dataset, batch_size):
@@ -114,4 +114,14 @@ class Trainable(TensorBoardObservable):
                 output = self(data)
                 import time
                 time.sleep(1)
+
+    def sample_model(self, z_dims):
+        with torch.no_grad():
+            self.eval()
+            self.to(config.device())
+            eps = torch.randn(z_dims).to(config.device())
+            eps = eps.view(1, -1, 1, 1)
+            image = self.sample(eps)
+
+
 
