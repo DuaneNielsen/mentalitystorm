@@ -1,13 +1,11 @@
 from abc import ABC
-
 import torch
 from tqdm import tqdm
-
 from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, ElasticSearchUpdater, \
     Dispatcher, Observable, TensorBoardObservable
-
 import numpy as np
 from tabulate import tabulate
+
 
 class Trainer(ABC, Observable, TensorBoardObservable):
     def __run__(self, model, dataset, batch_size, lossfunc, optimizer, epochs=2):
@@ -24,6 +22,18 @@ class Trainer(ABC, Observable, TensorBoardObservable):
 
             self.increment_epoch(model)
             model.save()
+
+    def __test__(self, model, dataset, batch_size, lossfunc, epochs):
+        device = config.device()
+        self.init_run_data(dataset, lossfunc, model)
+
+        for epoch in tqdm(range(epochs)):
+
+            losses, histograms = model.test_model(dataset, batch_size=batch_size, device=device, lossfunc=lossfunc)
+            self.update_ave_test_loss(losses, model)
+            self.send_histogram(epoch, histograms)
+            self.increment_epoch(model)
+
 
     def send_histogram(self, epoch, histograms):
         histograms = np.rollaxis(histograms, 1)
@@ -46,7 +56,6 @@ class Trainer(ABC, Observable, TensorBoardObservable):
         cor_scalar = np.sqrt(cor_scalar)
         cor_scalar = np.sum(cor_scalar) /cor_scalar.size / 2.0
         self.writeScalarToTB('z_cor_scalar', cor_scalar, 'z/z_ave_correlation')
-
 
         image = np.expand_dims(cor, axis=0)
         image = np.square(image)
@@ -87,6 +96,7 @@ class Trainer(ABC, Observable, TensorBoardObservable):
         model.sample_model(z_dims)
 
 
+#todo list test runner and matrix test runner
 class ModelFactoryTrainer(Trainer):
     def __init__(self, model_type):
         self.model_type = model_type
@@ -151,3 +161,23 @@ class Demo(Trainer):
             self.__sample__(model, z_dims)
             import time
             time.sleep(1)
+
+    def rotate(self, model, z_dims):
+        Dispatcher.registerView('sample_image', OpenCV('sample', (320, 420)))
+        for dim in range(z_dims):
+            z = torch.full((z_dims,), 1.0).to(config.device())
+            print('rotating ' + str(dim))
+            for interval in np.linspace(-16.0, 16.0, 100):
+                mag = abs(interval)
+                sign = np.sign(interval)
+
+                z[dim] = 1.0 + (sign * np.sqrt(mag))
+                model.decode_model(z)
+                import time
+                time.sleep(0.05)
+
+    def test(self, model, dataset, batch_size, lossfunc, epochs=2):
+        Dispatcher.registerView('input', OpenCV('input', (320, 420)))
+        Dispatcher.registerView('output', OpenCV('output', (320, 420)))
+
+        self.__test__(model, dataset, batch_size, lossfunc, epochs)

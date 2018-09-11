@@ -5,6 +5,7 @@ from .losses import Lossable
 import time
 import numpy as np
 
+
 class Checkable():
     def __init__(self):
         pass
@@ -123,5 +124,11 @@ class Trainable(Observable, TensorBoardObservable):
             eps = eps.view(1, -1, 1, 1)
             image = self.sample(eps)
 
+    def decode_model(self, z):
+        with torch.no_grad():
+            self.eval()
+            self.to(config.device())
+            eps = z.view(1, -1, 1, 1)
+            return self.sample(eps)
 
 
