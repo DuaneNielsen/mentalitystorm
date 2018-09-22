@@ -130,5 +130,3 @@ class Trainable(Observable, TensorBoardObservable):
             self.to(config.device())
             eps = z.view(1, -1, 1, 1)
             return self.sample(eps)
-
-

@@ -95,24 +95,10 @@ class Storeable(Observable):
         self.metadata = state[0]
         self.load_state_dict(state[2])
 
-    #todo should we just use absolute paths and do this in config?
-    @staticmethod
-    def fn(filename, data_dir):
-        if data_dir is None:
-            data = config.modelpath()
-        else:
-            data = Path(data_dir)
-
-        if filename is None:
-            import random, string
-            filename = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
-
-        fn = data / filename
-        return fn
 
     #todo move save to run dir
-    def save(self, filename=None, data_dir=None):
-        path = Storeable.fn(filename, data_dir)
+    def save(self, filename=None):
+        path = Path(filename)
         self.metadata['filename'] = path.name
         from datetime import datetime
         self.metadata['timestamp'] = datetime.utcnow()
@@ -126,13 +112,13 @@ class Storeable(Observable):
         return path.name
 
     @staticmethod
-    def load(filename, data_dir=None):
-        with Storeable.fn(filename, data_dir).open('rb') as f:
+    def load(filename):
+        with open(filename, 'rb') as f:
             try:
                 _ = pickle.load(f)
                 model = pickle.load(f)
             except Exception as e:
-                message = "got exception when loading {} from {}".format(filename, data_dir)
+                message = "got exception when loading {}".format(filename)
                 log.error(message)
                 log.error(e)
                 raise

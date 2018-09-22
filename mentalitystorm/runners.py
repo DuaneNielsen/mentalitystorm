@@ -5,6 +5,71 @@ from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, Elas
     Dispatcher, Observable, TensorBoardObservable
 import numpy as np
 from tabulate import tabulate
+from collections import namedtuple
+import torch.utils.data as data_utils
+
+DataSets = namedtuple('DataSets', 'dev, train, test')
+ModelOp = namedtuple('ModelOptim', 'model, opt')
+Run = namedtuple('Run', 'model_opt, loss_fn, dataset')
+
+
+class TestSplitter:
+    def __init__(self, dataset):
+        self.dev = data_utils.Subset(dataset, range(len(dataset) * 2 // 10))
+        self.train = data_utils.Subset(dataset, range(0, len(dataset) * 9//10))
+        self.test = data_utils.Subset(dataset, range(len(dataset) * 9 // 10 + 1, len(dataset)))
+
+    def get_datasets(self):
+        return DataSets(dev=self.dev, train=self.train, test=self.test)
+
+    def get_loaders(self, **kwargs):
+        """ Returns a named tuple of loaders
+
+        :param kwargs: same as kwargs for torch.utils.data.Loader
+        :return: named tuple of datasets, dev, train, test
+        """
+
+        dev = data_utils.DataLoader(self.dev, **kwargs)
+        train = data_utils.DataLoader(self.train, **kwargs)
+        test = data_utils.DataLoader(self.test, **kwargs)
+
+        return DataSets(dev=dev, train=train, test=test)
+
+
+class RunFac:
+    def __init__(self, default_run):
+        self.df = default_run
+        self.model_opts = []
+        self.datasets = []
+        self.loss_fns = []
+        self.run_id = 0
+        self.run_list = []
+
+    def all_empty(self):
+        return len(self.model_opts) + len(self.datasets) + len(self.loss_fns) == 0
+
+    def build_run(self):
+        if self.all_empty():
+            self.run_list.append(self.df)
+
+        for loss_fn in self.loss_fns:
+            self.run_list.append(Run(model_opt=self.df.model_opt, loss_fn=loss_fn, dataset=self.df.dataset))
+
+    def __iter__(self):
+        self.run_id = 0
+        self.build_run()
+        return self
+
+    def __next__(self):
+        if self.run_id == len(self.run_list):
+            raise StopIteration
+        run = self.run_list[self.run_id]
+        self.run_id += 1
+        return run.model_opt.model, run.model_opt.opt, run.loss_fn, run.dataset
+
+    def __getitem__(self, item):
+        self.build_run()
+        return self.run_list[item]
 
 
 class Trainer(ABC, Observable, TensorBoardObservable):
@@ -21,7 +86,7 @@ class Trainer(ABC, Observable, TensorBoardObservable):
             self.send_histogram(epoch, histograms)
 
             self.increment_epoch(model)
-            model.save()
+            model.save(config.model_fn(model))
 
     def __test__(self, model, dataset, batch_size, lossfunc, epochs):
         device = config.device()
@@ -33,7 +98,6 @@ class Trainer(ABC, Observable, TensorBoardObservable):
             self.update_ave_test_loss(losses, model)
             self.send_histogram(epoch, histograms)
             self.increment_epoch(model)
-
 
     def send_histogram(self, epoch, histograms):
         histograms = np.rollaxis(histograms, 1)
@@ -181,3 +245,4 @@ class Demo(Trainer):
         Dispatcher.registerView('output', OpenCV('output', (320, 420)))
 
         self.__test__(model, dataset, batch_size, lossfunc, epochs)
+

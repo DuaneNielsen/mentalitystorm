@@ -67,6 +67,7 @@ class Config(metaclass=Singleton):
         return self.DATA_PATH + '/' + self.run_id_string(model)
 
     def device(self):
+        #todo     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         return torch.device(str(self.TORCH_DEVICE))
 
     def __str__(self):
@@ -105,6 +106,9 @@ class Config(metaclass=Singleton):
         self.config[key] += 1
         self.save(self.configpath)
 
+    def increment_run_id(self):
+        self.increment('run_id')
+
     def save(self, filename):
         with open(filename, 'w') as configfile:
             json.dump(self.config, fp=configfile, indent=2)
@@ -113,5 +117,14 @@ class Config(metaclass=Singleton):
     def load(filename):
         with open(filename, 'r') as configfile:
             return json.load(fp=configfile)
+
+    def model_fn(self, model):
+        if 'epoch' not in model.metadata:
+            model.metadata['epoch'] = 1
+        else:
+            model.metadata['epoch'] += 1
+        file = Path(self.tb_run_dir(model) + '_' + str(model.metadata['epoch']) + '.md')
+        return file.absolute()
+
 
 config = Config()

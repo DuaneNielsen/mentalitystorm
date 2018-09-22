@@ -1,5 +1,10 @@
 from abc import ABC, abstractmethod
-from mentalitystorm.image import NumpyRGBWrapper
+from .image import NumpyRGBWrapper
+from .config import config
+import torch
+import torchvision.transforms.functional as tvf
+import pickle
+import numpy as np
 import cv2
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
@@ -49,11 +54,32 @@ class Observable:
         metadata['training'] = training
         self.updateObservers(tag, image, metadata)
 
+
+
     def updateObservers(self, tag, data, metadata=None):
         if tag not in dispatcher.pipelineView:
             dispatcher.pipelineView[tag] = []
         for observer in dispatcher.pipelineView[tag]:
             observer.update(data, metadata)
+
+    @staticmethod
+    def updateObserversWithImageStatic(self, tag, image, format=None, training=True, always_write=False):
+        metadata = {}
+        metadata['always'] = always_write
+        metadata['func'] = 'image'
+        metadata['name'] = tag
+        metadata['format'] = format
+        metadata['training'] = training
+        self.updateObservers(tag, image, metadata)
+
+
+    @staticmethod
+    def updateObserversStatic(tag, data, metadata=None):
+        if tag not in dispatcher.pipelineView:
+            dispatcher.pipelineView[tag] = []
+        for observer in dispatcher.pipelineView[tag]:
+            observer.update(data, metadata)
+
 
     """ Sends a close event to all observers.
     used to close video files or save at the end of rollouts
@@ -62,6 +88,25 @@ class Observable:
         for tag in dispatcher.pipelineView:
             for observer in dispatcher.pipelineView[tag]:
                 observer.endSession()
+
+    """ This is freaking brilliant, need more of this kind of thing!
+    Attach to model.register_forward_hook(Observerable.send_output_as_image)
+    """
+    @staticmethod
+    def send_output_as_image(self, input, output):
+        obs = Observable()
+        obs.updateObserversWithImage('output', output.data, 'tensorPIL')
+
+
+class ImageChannel(Observable):
+    def __init__(self, channel_id):
+        self.channel_id = channel_id
+
+    """ This is freaking brilliant, need more of this kind of thing!
+    Attach to model.register_forward_hook(Observerable.send_output_as_image)
+    """
+    def send_output_as_image(self, object, input, output):
+        self.updateObserversWithImage(self.channel_id, output.data, 'tensorPIL')
 
 
 """ Abstract base class for implementing View.
@@ -281,6 +326,75 @@ class TensorBoardObservable:
         metadata['tag'] = label
         metadata['step'] = step
         self.updateObservers('text', data, metadata)
+
+
+class ActionEmbedding():
+    def __init__(self, env):
+        self.env = env
+
+    def toTensor(self, action):
+        action_t = torch.zeros(self.env.action_space.n)
+        action_t[action] = 1.0
+        return action_t
+
+
+class ObservationAction:
+    def __init__(self):
+        self.observation = None
+        self.action = None
+
+
+"""
+update takes a tuple of ( numpyRGB, integer )
+and saves as tensors
+"""
+
+
+class ActionEncoder(View):
+    def __init__(self, model, env, name):
+        View.__init__(self)
+        self.model = model
+        self.model.eval()
+        self.session = 1
+        self.sess_obs_act = None
+        self.action_embedding = ActionEmbedding(env)
+        self.device = torch.device('cpu')
+        self.name = name
+        self.env = env
+        self.oa = None
+
+    def to(self, device):
+        self.model.to(device)
+        self.device = device
+        return self
+
+    def update(self, screen_action, metadata):
+        with torch.no_grad():
+            self.model.eval()
+        x = tvf.to_tensor(screen_action[0].copy()).detach().unsqueeze(0).to(self.device)
+        mu, logsigma = self.model.encoder(x)
+        a = self.action_embedding.toTensor(screen_action[1]).detach()
+
+        obs_n = mu.detach().cpu().numpy()
+        act_n = a.cpu().numpy()
+        act_n = np.expand_dims(act_n, axis=0)
+
+        if self.oa is None:
+            self.oa = ObservationAction()
+            self.oa.observation = np.empty(obs_n.shape, dtype='float32')
+            self.oa.action = np.empty(act_n.shape, dtype='float32')
+
+        self.oa.observation = np.append(self.oa.observation, obs_n, axis=0)
+        self.oa.action = np.append(self.oa.action, act_n, axis=0)
+
+    def endSession(self):
+
+        path = config.basepath() / self.name / 'latent' / str(self.session)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        file = open(path.absolute(), 'wb')
+        pickle.dump(self.oa, file=file)
+        self.session += 1
+        self.oa = None
 
 
 class SummaryWriterWithGlobal(SummaryWriter):
