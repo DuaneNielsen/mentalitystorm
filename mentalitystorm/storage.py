@@ -2,27 +2,10 @@ import pickle
 from pathlib import Path
 import inspect
 import hashlib
-import unicodedata
-import re
 import logging
 from mentalitystorm import Observable, config
 
 log = logging.getLogger('Storage')
-
-def slugify(value, allow_unicode=False):
-    """
-    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
-    Remove characters that aren't alphanumerics, underscores, or hyphens.
-    Convert to lowercase. Also strip leading and trailing whitespace.
-    """
-    value = str(value)
-    if allow_unicode:
-        value = unicodedata.normalize('NFKC', value)
-    else:
-        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
-    return re.sub(r'[-\s]+', '-', value)
-
 
 """Stores the object params for initialization
 Storable MUST be the first in the inheritance chain
@@ -56,7 +39,7 @@ class Storeable(Observable):
         self.metadata['classname'] = type(self).__name__
         self.metadata['args'] = self.repr_string
         self.metadata['repr'] = repr(self)
-        self.metadata['slug'] = slugify(type(self).__name__ + '-' + self.repr_string)
+        self.metadata['slug'] = config.slug(self)
 
 
     def extra_repr(self):

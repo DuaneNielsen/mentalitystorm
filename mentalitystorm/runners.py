@@ -9,51 +9,136 @@ from collections import namedtuple
 import torch.utils.data as data_utils
 
 DataSets = namedtuple('DataSets', 'dev, train, test')
-ModelOp = namedtuple('ModelOptim', 'model, opt')
-Run = namedtuple('Run', 'model_opt, loss_fn, dataset')
+DataLoaders = namedtuple('DataSets', 'dev, train, test')
 
 
-class TestSplitter:
-    def __init__(self, dataset):
-        self.dev = data_utils.Subset(dataset, range(len(dataset) * 2 // 10))
-        self.train = data_utils.Subset(dataset, range(0, len(dataset) * 9//10))
-        self.test = data_utils.Subset(dataset, range(len(dataset) * 9 // 10 + 1, len(dataset)))
+class Splitter:
 
-    def get_datasets(self):
-        return DataSets(dev=self.dev, train=self.train, test=self.test)
+    def split(self, dataset):
+        """
+        Splits the dataset into dev, train and test
+        :param dataset: the dataset to split
+        :return: DataSets named tupple (dev, train, test)
+        """
+        dev = data_utils.Subset(dataset, range(len(dataset) * 2 // 10))
+        train = data_utils.Subset(dataset, range(0, len(dataset) * 9//10))
+        test = data_utils.Subset(dataset, range(len(dataset) * 9 // 10 + 1, len(dataset)))
+        return DataSets(dev=dev, train=train, test=test)
 
-    def get_loaders(self, **kwargs):
+    def loaders(self, dataset, **kwargs):
         """ Returns a named tuple of loaders
 
         :param kwargs: same as kwargs for torch.utils.data.Loader
-        :return: named tuple of datasets, dev, train, test
+        :return: named tuple of dataloaders, dev, train, test
         """
 
-        dev = data_utils.DataLoader(self.dev, **kwargs)
-        train = data_utils.DataLoader(self.train, **kwargs)
-        test = data_utils.DataLoader(self.test, **kwargs)
+        split = self.split(dataset)
 
-        return DataSets(dev=dev, train=train, test=test)
+        dev = data_utils.DataLoader(split.dev, **kwargs)
+        train = data_utils.DataLoader(split.train, **kwargs)
+        test = data_utils.DataLoader(split.test, **kwargs)
 
+        return DataLoaders(dev=dev, train=train, test=test)
+
+
+class DataPackage:
+    """ Datapackage provides everything required to load data to train and test a model
+    """
+    def __init__(self, dataset, selector, splitter=None):
+        """
+        :param dataset: the torch dataset object
+        :param selector: selects the model input and model target data
+        :param splitter: splits data into dev, train and test sets
+        """
+        self.dataset = dataset
+        self.splitter = splitter if splitter is not None else Splitter()
+        self.selector = selector
+
+    def loaders(self, **kwargs):
+        dev, train, test = self.splitter.loaders(self.dataset, **kwargs)
+        return dev, train, test, self.selector
+
+
+class Run:
+    def __init__(self, model, opt, loss_fn, data_package, run_id=None, epoch=None, step=None, metadata=None):
+        """
+
+        :param model: the model to train
+        :param opt: the optimizer for the model, should already be initialized with model params
+        :param loss_fn: the loss function to use for training
+        :param data_package: specifies what to load, how to split the dataset, and what is inputs and targets
+        :param run_id: the run_id, used to identify the run
+        :param epoch: the epoch, used for checkpointing and resuming
+        :param step: total minibatches trained on this run, used for resuming
+        :param metadata: dict containing name/value metadata on this run
+        """
+        self.model = model
+        self.opt = opt
+        self.loss_fn = loss_fn
+        self.data_package = data_package
+
+        if run_id is not None:
+            self.run_id = run_id
+        else:
+            config.increment_run_id()
+            self.run_id = config.run_id_string(model)
+
+        self.epochs = 0
+        if epoch is not None:
+            self.epochs = epoch
+
+        self.step = 0
+        if step is not None:
+            self.step = step
+
+        self.metadata = {}
+        if metadata is not None:
+            self.metadata = metadata
+
+        self.limit_epochs = self.epochs
+
+    def __iter__(self, num_epochs):
+        self.limit_epochs += num_epochs
+        return self
+
+    def __next__(self):
+        if self.epochs == self.limit_epochs:
+            raise StopIteration
+        epoch = self.epochs
+        self.epochs += 1
+        return epoch
+
+    @staticmethod
+    def resume(file):
+        raise NotImplementedError
+
+    def save(self, file):
+        raise NotImplementedError
+
+
+ModelOpt = namedtuple('ModelOpt', 'model, opt')
 
 class RunFac:
     def __init__(self, default_run):
         self.df = default_run
-        self.model_opts = []
-        self.datasets = []
+        self._model_opts = []
+        self.data_packages = []
         self.loss_fns = []
         self.run_id = 0
         self.run_list = []
 
+    def add_model_opt(self, model, opt):
+        self._model_opts.append(ModelOpt(model, opt))
+
     def all_empty(self):
-        return len(self.model_opts) + len(self.datasets) + len(self.loss_fns) == 0
+        return len(self._model_opts) + len(self.data_packages) + len(self.loss_fns) == 0
 
     def build_run(self):
         if self.all_empty():
             self.run_list.append(self.df)
 
         for loss_fn in self.loss_fns:
-            self.run_list.append(Run(model_opt=self.df.model_opt, loss_fn=loss_fn, dataset=self.df.dataset))
+            self.run_list.append(Run(model=self.df.model, opt=self.df.opt, loss_fn=loss_fn, data_package=self.df.data_package))
 
     def __iter__(self):
         self.run_id = 0
@@ -65,11 +150,12 @@ class RunFac:
             raise StopIteration
         run = self.run_list[self.run_id]
         self.run_id += 1
-        return run.model_opt.model, run.model_opt.opt, run.loss_fn, run.dataset
+        return run.model, run.opt, run.loss_fn, run.data_package, run
 
     def __getitem__(self, item):
         self.build_run()
         return self.run_list[item]
+
 
 
 class Trainer(ABC, Observable, TensorBoardObservable):

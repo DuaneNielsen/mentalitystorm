@@ -6,6 +6,29 @@ from torchvision import transforms as TVT
 from pathlib import Path
 import json
 import logging
+import unicodedata
+import re
+
+
+def slugify(value, allow_unicode=False):
+    """
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
+    Remove characters that aren't alphanumerics, underscores, or hyphens.
+    Convert to lowercase. Also strip leading and trailing whitespace.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
+    return re.sub(r'[-\s]+', '-', value)
+
+
+def slug(model):
+    repr_string = model.repr_string if hasattr(model, 'repr_string') else repr(model)
+    return slugify(type(model).__name__ + '-' + repr_string)
+
 
 class Singleton(type):
     """
@@ -46,7 +69,7 @@ class Config(metaclass=Singleton):
         return "{0:0=3d}".format(self.config['run_id']%1000)
 
     def run_id_string(self, model):
-        return 'runs/run' + self.rolling_run_number() + '/' +  model.metadata['slug']
+        return 'runs/' + self.rolling_run_number() + '/' + slug(model)
 
     def convert_to_url(self, run, host=None, port='6006'):
         if host is None:
