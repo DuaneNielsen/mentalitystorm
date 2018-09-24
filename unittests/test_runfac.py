@@ -1,7 +1,7 @@
 from unittest import TestCase
 import torch
 import torch.nn as nn
-import torch.utils.data as datautils
+import torch.utils.data as data_utils
 from mentalitystorm import Run, RunFac, DataPackage, SimpleTrainer, TestMSELoss
 from tqdm import tqdm
 
@@ -34,7 +34,7 @@ class TestRunFac(TestCase):
         optimizer = torch.optim.Adam(model.parameters())
         x = torch.rand(100, 10)
         y = torch.rand(100, 10)
-        dataset = datautils.TensorDataset(x, y)
+        dataset = data_utils.TensorDataset(x, y)
         data_package = DataPackage(dataset, Selector())
 
         loss_func = TestMSELoss()
@@ -52,4 +52,6 @@ class TestRunFac(TestCase):
         for model, opt, loss_fn, data_package, trainer, tester, run in rf:
             dev, train, test, selector = data_package.loaders(batch_size=2)
             for epoch in tqdm(run.for_epochs(10)):
+                epoch.execute_before(epoch)
                 trainer.train(model, opt, loss_fn, dev, selector, run, epoch)
+                epoch.execute_after(epoch)

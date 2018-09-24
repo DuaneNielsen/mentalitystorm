@@ -91,8 +91,11 @@ class Config(metaclass=Singleton):
         url = self.convert_to_url(run)
         return url
 
-    def tb_run_dir(self, model):
-        return self.DATA_PATH + '/' + self.run_id_string(model)
+    def tb_run_dir(self, param):
+        if isinstance(param, torch.nn.Module):
+            return self.DATA_PATH + '/' + self.run_id_string(param)
+        else:
+            return self.DATA_PATH + '/' + param
 
     def device(self):
         #todo     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

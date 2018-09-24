@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, ElasticSearchUpdater, \
     Dispatcher, Observable, TensorBoardObservable
@@ -9,6 +10,8 @@ from collections import namedtuple
 import torch.utils.data as data_utils
 from tensorboardX import SummaryWriter
 from .util import Hookable
+from .losses import Lossable
+
 
 class Selector(ABC):
     @abstractmethod
@@ -103,8 +106,15 @@ class EpochIter:
         return epoch
 
 
+def weights_init(m):
+    if type(m) == nn.Conv2d or type(m) == nn.ConvTranspose2d or type(m) == nn.Linear:
+        m.reset_parameters()
+        #torch.nn.init.kaiming_uniform_(m.weight)
+        #m.bias.data.fill_(0.01)
+
+
 class Run:
-    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, tensorboard=True):
+    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, run_name=None, tensorboard=True):
         """
         :param model: the model to train
         :param opt: the optimizer for the model, should already be initialized with model params
@@ -112,16 +122,22 @@ class Run:
         :param data_package: specifies what to load, how to split the dataset, and what is inputs and targets
         :param trainer: the trainer to use
         :param tester: the tester to use
+        :param run_name name of the run
         :param tensorboard: to use tensorboard or not
         """
         self.model = model
+        self.inject_modules(model)
+        model.apply(weights_init)
         self.opt = opt
         self.loss_fn = loss_fn
+        self.inject_loss(loss_fn)
         self.data_package = data_package
-        self.loss_fn.run = self
         config.increment_run_id()
-        self.run_id = config.run_id_string(model)
-        self.tb = SummaryWriter(config.tb_run_dir(model)) if tensorboard else None
+        if run_name is None:
+            self.run_id = config.run_id_string(model)
+        else:
+            self.run_id = 'runs/' + config.rolling_run_number() + '/' + run_name
+        self.tb = SummaryWriter(config.tb_run_dir(self.run_id)) if tensorboard else None
         self.epochs = 0
         self.step = 0
         self.epoch = None
@@ -132,11 +148,18 @@ class Run:
         self.tester = tester
         if tester is not None:
             self.tester.run = self
-        self.inject_modules()
+        self.inject_modules(self.model)
 
-    def inject_modules(self):
-        for model in self.model.modules():
-            model.run = self
+
+
+    def inject_modules(self, model):
+        if model is not None:
+            for model in model.modules():
+                model.run = self
+
+    def inject_loss(self, loss):
+        if isinstance(loss, Lossable):
+            loss.run = self
 
     def for_epochs(self, num_epochs):
         return EpochIter(num_epochs, self)
@@ -144,10 +167,21 @@ class Run:
 
 ModelOpt = namedtuple('ModelOpt', 'model, opt')
 
+RunParams = namedtuple('RunParams', 'model, opt, loss_fn, data_package, trainer, tester, run_name, tensorboard')
+
 
 class RunFac:
-    def __init__(self, default_run):
-        self.df = default_run
+    def __init__(self, model=None, opt=None, loss_fn=None, data_package=None, trainer=None, tester=None, run_name=None,
+                 tensorboard=True):
+        self.model = model
+        self.opt = opt
+        self.loss_fn = loss_fn
+        self.data_package = data_package
+        self.trainer = trainer
+        self.tester = tester
+        self.run_name = run_name
+        self.tensorboard = tensorboard
+
         self._model_opts = []
         self.data_packages = []
         self.loss_fns = []
@@ -162,15 +196,34 @@ class RunFac:
 
     def build_run(self):
         if self.all_empty():
-            self.run_list.append(self.df)
+            self.run_list.append(RunParams(model=self.model,
+                                           opt=self.opt,
+                                           loss_fn=self.loss_fn,
+                                           data_package=self.data_package,
+                                           trainer=self.trainer,
+                                           tester=self.tester,
+                                           run_name=self.run_name,
+                                           tensorboard=self.tensorboard))
 
         for loss_fn in self.loss_fns:
-            self.run_list.append(Run(model=self.df.model,
-                                     opt=self.df.opt,
-                                     loss_fn=loss_fn,
-                                     data_package=self.df.data_package,
-                                     trainer=self.df.trainer,
-                                     tester=self.df.tester))
+            if isinstance(loss_fn, tuple):
+                self.run_list.append(RunParams(model=self.model,
+                                               opt=self.opt,
+                                               loss_fn=loss_fn[1],
+                                               data_package=self.data_package,
+                                               trainer=self.trainer,
+                                               tester=self.tester,
+                                               run_name=loss_fn[0],
+                                               tensorboard=self.tensorboard))
+            else:
+                self.run_list.append(RunParams(model=self.model,
+                                               opt=self.opt,
+                                               loss_fn=loss_fn,
+                                               data_package=self.data_package,
+                                               trainer=self.trainer,
+                                               tester=self.tester,
+                                               run_name=None,
+                                               tensorboard=self.tensorboard))
 
     def __iter__(self):
         self.run_id = 0
@@ -180,7 +233,7 @@ class RunFac:
     def __next__(self):
         if self.run_id == len(self.run_list):
             raise StopIteration
-        run = self.run_list[self.run_id]
+        run = Run(*self.run_list[self.run_id])
         self.run_id += 1
         return run.model, run.opt, run.loss_fn, run.data_package, run.trainer, run.tester, run
 

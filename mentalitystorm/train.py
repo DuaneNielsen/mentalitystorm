@@ -70,6 +70,36 @@ class SimpleTrainer(Hookable):
             run.step += 1
 
 
+class SimpleTester(Hookable):
+
+    def test(self, model, lossfunc, dataloader, selector, run, epoch):
+        device = config.device()
+        model.to(device)
+        model.eval()
+        model.epoch = epoch
+
+        for payload in dataloader:
+
+            input_data = selector.get_input(payload, device)
+            target_data = selector.get_target(payload, device)
+
+            before_args = BeforeArgs(self, payload, input_data, target_data, model, None, lossfunc, dataloader,
+                                     selector, run, epoch)
+            self.execute_before(before_args)
+
+            output_data = model(*input_data)
+            if type(output_data) == tuple:
+                loss = lossfunc(*output_data, *target_data)
+            else:
+                loss = lossfunc(output_data, *target_data)
+
+            after_args = AfterArgs(self, payload, input_data, target_data, model, None, lossfunc, dataloader,
+                                   selector, run, epoch, output_data, loss)
+            self.execute_after(after_args)
+
+            run.step += 1
+
+
 class Trainable(Observable, TensorBoardObservable):
 
     @staticmethod
