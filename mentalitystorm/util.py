@@ -39,3 +39,63 @@ def default_maxunpool_indices(output_shape, kernel_size, batch_size, channels, d
     w_v = torch.arange(iw,dtype=torch.int64, device=device) * pw
     h_v = torch.transpose(h_v.unsqueeze(0), 1,0)
     return (h_v + w_v).expand(batch_size, channels, -1, -1)
+
+
+class HookHandle:
+    def __init__(self, list_of_hooks):
+        self.list_of_hooks = list_of_hooks
+        self.handle = list_of_hooks[-1]
+
+    def remove(self):
+        del self.list_of_hooks[self.handle]
+
+
+class Hookable:
+    """
+    Adds entry points for removable hooks
+    """
+    def __init__(self):
+        self.context = {}
+        self.before_hooks = []
+        self.after_hooks = []
+
+    def register_before_hook(self, func):
+        """ Adds a closure to be executed before minibatch step, use trainer.context['key'] to store context to be
+        transmitted to the after_hook, or over the lifetime of the batch
+
+        variables to persist over the run can be stored in run.metadata['key']
+
+        :param func: closure, arguments are 'trainer, payload, input_data, target_data, model, optimizer, lossfunc,
+        dataloader, selector, run'
+        :return: a handle to remove the hook
+        """
+        self.before_hooks.append(func)
+        return HookHandle(self.before_hooks)
+
+    def register_after_hook(self, func):
+        """ Adds a closure to be executed after minibatch step, use trainer.context['key'] to store context to be
+        transmitted to the after_hook, or over the lifetime of the batch
+
+        variables to persist over the run can be stored in run.metadata['key']
+
+        :param func: closure, arguments are 'trainer, payload, input_data, target_data, model, optimizer, lossfunc,
+        dataloader, selector, run, output, loss'
+        :return: a handle to remove the hook
+        """
+        self.after_hooks.append(func)
+        return HookHandle(self.after_hooks)
+
+    def execute_before(self, before_args):
+
+        for closure in self.before_hooks:
+            closure(before_args)
+
+        # self.context['start'] = time.time()
+
+    def execute_after(self, after_args):
+        for closure in self.after_hooks:
+            closure(after_args)
+
+        # stop = time.time()
+        # loop_time = stop - self.context['start']
+        # self.writePerformanceToTB(loop_time, input_data.shape[0])

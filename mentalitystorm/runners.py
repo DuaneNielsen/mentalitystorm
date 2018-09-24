@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import torch
 from tqdm import tqdm
 from mentalitystorm import Storeable, MSELoss, config, TensorBoard, OpenCV, ElasticSearchUpdater, \
@@ -7,6 +7,18 @@ import numpy as np
 from tabulate import tabulate
 from collections import namedtuple
 import torch.utils.data as data_utils
+from tensorboardX import SummaryWriter
+from .util import Hookable
+
+class Selector(ABC):
+    @abstractmethod
+    def get_input(self, package, device):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_target(self, package, device):
+        raise NotImplementedError
+
 
 DataSets = namedtuple('DataSets', 'dev, train, test')
 DataLoaders = namedtuple('DataSets', 'dev, train, test')
@@ -59,54 +71,11 @@ class DataPackage:
         return dev, train, test, self.selector
 
 
-class Run:
-    def __init__(self, model, opt, loss_fn, data_package, run_id=None, epoch=None, step=None, metadata=None):
-        """
-
-        :param model: the model to train
-        :param opt: the optimizer for the model, should already be initialized with model params
-        :param loss_fn: the loss function to use for training
-        :param data_package: specifies what to load, how to split the dataset, and what is inputs and targets
-        :param run_id: the run_id, used to identify the run
-        :param epoch: the epoch, used for checkpointing and resuming
-        :param step: total minibatches trained on this run, used for resuming
-        :param metadata: dict containing name/value metadata on this run
-        """
-        self.model = model
-        self.opt = opt
-        self.loss_fn = loss_fn
-        self.data_package = data_package
-
-        if run_id is not None:
-            self.run_id = run_id
-        else:
-            config.increment_run_id()
-            self.run_id = config.run_id_string(model)
-
-        self.epochs = 0
-        if epoch is not None:
-            self.epochs = epoch
-
-        self.step = 0
-        if step is not None:
-            self.step = step
-
-        self.metadata = {}
-        if metadata is not None:
-            self.metadata = metadata
-
-        self.limit_epochs = self.epochs
-
-    def __iter__(self, num_epochs):
-        self.limit_epochs += num_epochs
-        return self
-
-    def __next__(self):
-        if self.epochs == self.limit_epochs:
-            raise StopIteration
-        epoch = self.epochs
-        self.epochs += 1
-        return epoch
+class Epoch(Hookable):
+    def __init__(self, index, run):
+        super(Epoch, self).__init__()
+        self.ix = index
+        self.run = run
 
     @staticmethod
     def resume(file):
@@ -116,7 +85,65 @@ class Run:
         raise NotImplementedError
 
 
+class EpochIter:
+    def __init__(self, num_epochs, run):
+        self.num_epochs = num_epochs
+        self.run = run
+        self.last_epoch = run.epochs + num_epochs
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.run.epochs == self.last_epoch:
+            raise StopIteration
+        epoch = Epoch(self.run.epochs, self.run)
+        self.run.epoch = epoch
+        self.run.epochs += 1
+        return epoch
+
+
+class Run:
+    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, tensorboard=True):
+        """
+        :param model: the model to train
+        :param opt: the optimizer for the model, should already be initialized with model params
+        :param loss_fn: the loss function to use for training
+        :param data_package: specifies what to load, how to split the dataset, and what is inputs and targets
+        :param trainer: the trainer to use
+        :param tester: the tester to use
+        :param tensorboard: to use tensorboard or not
+        """
+        self.model = model
+        self.opt = opt
+        self.loss_fn = loss_fn
+        self.data_package = data_package
+        self.loss_fn.run = self
+        config.increment_run_id()
+        self.run_id = config.run_id_string(model)
+        self.tb = SummaryWriter(config.tb_run_dir(model)) if tensorboard else None
+        self.epochs = 0
+        self.step = 0
+        self.epoch = None
+        self.context = {}
+        self.trainer = trainer
+        if trainer is not None:
+            self.trainer.run = self
+        self.tester = tester
+        if tester is not None:
+            self.tester.run = self
+        self.inject_modules()
+
+    def inject_modules(self):
+        for model in self.model.modules():
+            model.run = self
+
+    def for_epochs(self, num_epochs):
+        return EpochIter(num_epochs, self)
+
+
 ModelOpt = namedtuple('ModelOpt', 'model, opt')
+
 
 class RunFac:
     def __init__(self, default_run):
@@ -138,7 +165,12 @@ class RunFac:
             self.run_list.append(self.df)
 
         for loss_fn in self.loss_fns:
-            self.run_list.append(Run(model=self.df.model, opt=self.df.opt, loss_fn=loss_fn, data_package=self.df.data_package))
+            self.run_list.append(Run(model=self.df.model,
+                                     opt=self.df.opt,
+                                     loss_fn=loss_fn,
+                                     data_package=self.df.data_package,
+                                     trainer=self.df.trainer,
+                                     tester=self.df.tester))
 
     def __iter__(self):
         self.run_id = 0
@@ -150,12 +182,11 @@ class RunFac:
             raise StopIteration
         run = self.run_list[self.run_id]
         self.run_id += 1
-        return run.model, run.opt, run.loss_fn, run.data_package, run
+        return run.model, run.opt, run.loss_fn, run.data_package, run.trainer, run.tester, run
 
     def __getitem__(self, item):
         self.build_run()
         return self.run_list[item]
-
 
 
 class Trainer(ABC, Observable, TensorBoardObservable):

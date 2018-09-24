@@ -4,6 +4,7 @@ import inspect
 import hashlib
 import logging
 from mentalitystorm import Observable, config
+from .config import slug
 
 log = logging.getLogger('Storage')
 
@@ -39,7 +40,7 @@ class Storeable(Observable):
         self.metadata['classname'] = type(self).__name__
         self.metadata['args'] = self.repr_string
         self.metadata['repr'] = repr(self)
-        self.metadata['slug'] = config.slug(self)
+        self.metadata['slug'] = slug(self)
 
 
     def extra_repr(self):

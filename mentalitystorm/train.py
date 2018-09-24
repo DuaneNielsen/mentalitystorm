@@ -1,10 +1,12 @@
 import torch
 import torch.utils.data as du
 from mentalitystorm import Observable, TensorBoardObservable, config
+from mentalitystorm.util import Hookable
 from .losses import Lossable
 import time
 import numpy as np
 from collections import namedtuple
+
 
 class Checkable():
     def __init__(self):
@@ -29,78 +31,41 @@ class Checkable():
         gradcheck(self.double(), *args, eps=1e-6, atol=1e-4)
 
 
-BeforeArgs = namedtuple('BeforeArgs', 'trainer, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run')
-AfterArgs = namedtuple('AfterArgs', 'trainer, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run,output, loss')
+BeforeArgs = namedtuple('BeforeArgs', 'self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, '
+                                      'selector, run, epoch')
+AfterArgs = namedtuple('AfterArgs', 'self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, '
+                                    'selector, run, epoch, output_data, loss')
 
 
-class SimpleTrainer:
-    def __init__(self):
-        self.context = {}
-        self.before_hooks = []
-        self.after_hooks = []
+class SimpleTrainer(Hookable):
 
-    def register_before_hook(self, func):
-        """ Adds a closure to be executed before minibatch step, use trainer.context['key'] to store context to be
-        transmitted to the after_hook, or over the lifetime of the batch
-
-        variables to persist over the run can be stored in run.metadata['key']
-
-        :param func: closure, arguments are 'trainer, payload, input_data, target_data, model, optimizer, lossfunc,
-        dataloader, selector, run'
-        :return: nothing
-        """
-        self.before_hooks.append(func)
-
-    def register_after_hook(self, func):
-        """ Adds a closure to be executed after minibatch step, use trainer.context['key'] to store context to be
-        transmitted to the after_hook, or over the lifetime of the batch
-
-        variables to persist over the run can be stored in run.metadata['key']
-
-        :param func: closure, arguments are 'trainer, payload, input_data, target_data, model, optimizer, lossfunc,
-        dataloader, selector, run, output, loss'
-        :return: nothing
-        """
-        self.after_hooks.append(func)
-
-    def execute_before(self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run):
-        before_args = BeforeArgs(self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run)
-        for closure in self.before_hooks:
-            closure(before_args)
-
-        # self.context['start'] = time.time()
-
-    def execute_after(self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run, output, loss):
-        after_args = AfterArgs(self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run, output, loss)
-        for closure in self.after_hooks:
-            closure(after_args)
-
-        # stop = time.time()
-        # loop_time = stop - self.context['start']
-        # self.writePerformanceToTB(loop_time, input_data.shape[0])
-
-    def train(self, model, optimizer, lossfunc, dataloader, selector, run):
+    def train(self, model, optimizer, lossfunc, dataloader, selector, run, epoch):
         device = config.device()
         model.to(device)
         model.train()
+        model.epoch = epoch
 
         for payload in dataloader:
 
             input_data = selector.get_input(payload, device)
             target_data = selector.get_target(payload, device)
 
-            self.execute_before(payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run)
+            before_args = BeforeArgs(self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader,
+                                     selector, run, epoch)
+            self.execute_before(before_args)
 
             optimizer.zero_grad()
-            output = model(*input_data)
-            if type(output) == tuple:
-                loss = lossfunc(*output, *target_data)
+            output_data = model(*input_data)
+            if type(output_data) == tuple:
+                loss = lossfunc(*output_data, *target_data)
             else:
-                loss = lossfunc(output, *target_data)
+                loss = lossfunc(output_data, *target_data)
             loss.backward()
             optimizer.step()
 
-            self.execute_after(payload, input_data, target_data, model, optimizer, lossfunc, dataloader, selector, run, output, loss)
+            after_args = AfterArgs(self, payload, input_data, target_data, model, optimizer, lossfunc, dataloader,
+                                   selector, run, epoch, output_data, loss)
+            self.execute_after(after_args)
 
             run.step += 1
 

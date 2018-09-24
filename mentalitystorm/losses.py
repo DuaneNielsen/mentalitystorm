@@ -1,12 +1,25 @@
 from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as F
+from torch.nn.modules.loss import _Loss
 from .observe import Observable, TensorBoardObservable
 
 
-class Lossable(ABC):
-    @abstractmethod
-    def loss(self, recon_x, mu, logvar, x): raise NotImplementedError
+class Lossable(_Loss):
+    def __init__(self):
+        super().__init__()
+        self.hooks = []
+
+    def register_term_hook(self, closure):
+        self.hooks.append(closure)
+
+    def execute_term_hooks(self, **loss_terms):
+        for closure in self.hooks:
+            for key, value in loss_terms.items():
+                closure(self, key, value)
+
+    def forward(self, *input):
+        raise NotImplemented
 
 
 class BceKldLoss(Lossable, Observable, TensorBoardObservable):
@@ -15,7 +28,7 @@ class BceKldLoss(Lossable, Observable, TensorBoardObservable):
         TensorBoardObservable.__init__(self)
 
     # Reconstruction + KL divergence losses summed over all elements and batch
-    def loss(self, recon_x, mu, logvar, x):
+    def forward(self, recon_x, mu, logvar, x):
         BCE = F.binary_cross_entropy(recon_x, x)
 
         self.writeScalarToTB('BCELoss', BCE.item(), 'loss/BCELoss')
@@ -30,18 +43,15 @@ class BceKldLoss(Lossable, Observable, TensorBoardObservable):
         return BCE + KLD
 
 
-
-class MseKldLoss(Lossable, Observable, TensorBoardObservable):
+class MseKldLoss(Lossable):
     def __init__(self, beta=1.0):
+        super().__init__()
         self.beta = beta
-        Observable.__init__(self)
-        TensorBoardObservable.__init__(self)
 
     # Reconstruction + KL divergence losses summed over all elements and batch
-    def loss(self, recon_x, mu, logvar, x):
+    def forward(self, recon_x, mu, logvar, x):
         MSE = F.mse_loss(recon_x, x, reduction='sum')
 
-        self.writeScalarToTB('MSELoss', MSE.item(), 'loss/MSELoss')
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
         # https://arxiv.org/abs/1312.6114
@@ -52,13 +62,12 @@ class MseKldLoss(Lossable, Observable, TensorBoardObservable):
         # https: // openreview.net / forum?id = Sy2fzU9gl
         KLD = KLD * self.beta
 
-        self.writeScalarToTB('KLDLoss', KLD.item(), 'loss/KLDLoss')
-
+        self.execute_term_hooks(kld_loss=KLD, mse_loss=MSE)
         return MSE + KLD
 
 class BcelKldLoss(Lossable):
     # Reconstruction + KL divergence losses summed over all elements and batch
-    def loss(self, recon_x, mu, logvar, x):
+    def forward(self, recon_x, mu, logvar, x):
         BCE = F.binary_cross_entropy_with_logits(recon_x, x, reduction='sum')
 
         # see Appendix B from VAE paper:
@@ -72,7 +81,7 @@ class BcelKldLoss(Lossable):
 
 class BceLoss(Lossable):
     # Reconstruction + KL divergence losses summed over all elements and batch
-    def loss(self, recon_x, mu, logvar, x):
+    def forward(self, recon_x, mu, logvar, x):
         BCE = F.binary_cross_entropy(recon_x, x)
 
         # see Appendix B from VAE paper:
@@ -85,5 +94,12 @@ class BceLoss(Lossable):
 
 
 class MSELoss(Lossable):
-    def loss(self, recon_x, mu, logvar, x):
+    def forward(self, recon_x, mu, logvar, x):
         return F.mse_loss(recon_x, x)
+
+
+class TestMSELoss(Lossable):
+    def forward(self, y, x):
+        loss = F.mse_loss(y, x)
+        self.execute_term_hooks(mse_loss=loss)
+        return loss

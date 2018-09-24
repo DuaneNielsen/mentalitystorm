@@ -6,5 +6,6 @@ from .image import NumpyRGBWrapper, TensorPILWrapper
 from .train import Trainable, Checkable, SimpleTrainer
 from .storage import Storeable, ModelDb
 from .basemodels import BaseVAE
-from .losses import Lossable, MSELoss, BceKldLoss, BceLoss, MseKldLoss
-from .runners import OneShotTrainer, OneShotEasyTrainer, ModelFactoryTrainer, Demo, RunFac, Run, Splitter, DataPackage
+from .losses import Lossable, MSELoss, BceKldLoss, BceLoss, MseKldLoss, TestMSELoss
+from .runners import OneShotTrainer, OneShotEasyTrainer, ModelFactoryTrainer, Demo, RunFac, Run, Splitter, DataPackage, \
+    Selector

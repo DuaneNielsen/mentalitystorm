@@ -65,6 +65,11 @@ class Config(metaclass=Singleton):
         logfile = self.getLogPath('most_improved.log')
         logging.basicConfig(filename=logfile.absolute())
 
+        self.globaldata = {}
+
+        # variable to hold tensorboard global
+        self.tb = None
+
     def rolling_run_number(self):
         return "{0:0=3d}".format(self.config['run_id']%1000)
 
