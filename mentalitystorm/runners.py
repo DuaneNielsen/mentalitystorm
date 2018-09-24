@@ -11,6 +11,7 @@ import torch.utils.data as data_utils
 from tensorboardX import SummaryWriter
 from .util import Hookable
 from .losses import Lossable
+from .train import SimpleTrainer, SimpleTester
 
 
 class Selector(ABC):
@@ -106,15 +107,26 @@ class EpochIter:
         return epoch
 
 
-def weights_init(m):
-    if type(m) == nn.Conv2d or type(m) == nn.ConvTranspose2d or type(m) == nn.Linear:
-        m.reset_parameters()
         #torch.nn.init.kaiming_uniform_(m.weight)
         #m.bias.data.fill_(0.01)
 
 
+class Init:
+    def __init__(self, clazz, *args, **kwargs):
+        self.clazz = clazz
+        self.args = args
+        self.kwargs = kwargs
+
+    def construct(self, model=None):
+        if model is None:
+            return self.clazz(*self.args, **self.kwargs)
+        else:
+            return self.clazz(model.parameters(), *self.args, **self.kwargs)
+
+
 class Run:
-    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, run_name=None, tensorboard=True):
+    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, run_name=None, tensorboard=True,
+                 weights_init_func=None):
         """
         :param model: the model to train
         :param opt: the optimizer for the model, should already be initialized with model params
@@ -124,45 +136,99 @@ class Run:
         :param tester: the tester to use
         :param run_name name of the run
         :param tensorboard: to use tensorboard or not
+        :param weights_init_func: to initialize the model weights
         """
-        self.model = model
-        self.inject_modules(model)
-        model.apply(weights_init)
-        self.opt = opt
-        self.loss_fn = loss_fn
-        self.inject_loss(loss_fn)
+
+        if not isinstance(model, Init):
+            raise Exception('model should be a Initializer, dont put a naked model in!')
+
+        if not isinstance(opt, Init):
+            raise Exception('model should be a Initializer, dont put a naked optimizer in!')
+
+        self.model_i = model
+        self.model = None
+
+        self.opt_i = opt
+        self.opt = None
+
+        self.loss_fn_i = loss_fn
+        self.loss = None
+
         self.data_package = data_package
-        config.increment_run_id()
-        if run_name is None:
-            self.run_id = config.run_id_string(model)
-        else:
-            self.run_id = 'runs/' + config.rolling_run_number() + '/' + run_name
-        self.tb = SummaryWriter(config.tb_run_dir(self.run_id)) if tensorboard else None
+
+        self.trainer = trainer if trainer is not None else SimpleTrainer()
+        self.trainer.run = self
+
+        self.tester = tester if tester is not None else SimpleTester()
+        self.tester.run = self
+
+        self.run_name = run_name
+        self.run_id = None
         self.epochs = 0
         self.step = 0
         self.epoch = None
+
         self.context = {}
-        self.trainer = trainer
-        if trainer is not None:
-            self.trainer.run = self
-        self.tester = tester
-        if tester is not None:
-            self.tester.run = self
+
+        self.weights_init_func = weights_init_func
+
+    def construct_model_and_optimizer(self):
+        self.model = self.model_i.construct()
         self.inject_modules(self.model)
+        if self.weights_init_func is not None:
+            self.model.apply(self.weights_init_func)
+        self.opt = self.opt_i.construct(self.model)
+        self.opt.run = self
+        return self.model, self.opt
 
-
+    def construct_loss(self):
+        if isinstance(self.loss_fn_i, Init):
+            self.loss = self.loss_fn_i.construct()
+        else:
+            self.loss = self.loss_fn_i
+        if isinstance(self.loss, Lossable):
+            self.loss.run = self
+        return self.loss
 
     def inject_modules(self, model):
         if model is not None:
             for model in model.modules():
                 model.run = self
 
-    def inject_loss(self, loss):
-        if isinstance(loss, Lossable):
-            loss.run = self
+    def init_run_dir(self, model, increment_run=True, tensorboard=True):
+        if increment_run:
+            config.increment_run_id()
+        if self.run_name is None:
+            self.run_id = 'runs/' + config.rolling_run_number() + '/' + config.slug(model)
+        else:
+            self.run_id = 'runs/' + config.rolling_run_number() + '/' + self.run_name
+        self.tb = SummaryWriter(config.tb_run_dir(self.run_id)) if tensorboard else None
+
+    def construct(self, increment_run=True, tensorboard=True):
+        self.construct_model_and_optimizer()
+        self.construct_loss()
+        self.init_run_dir(self.model, increment_run, tensorboard)
+        return self.model, self.opt, self.loss, self.data_package, self.trainer, self.tester, self
 
     def for_epochs(self, num_epochs):
         return EpochIter(num_epochs, self)
+
+
+class SimpleRunFac:
+    def __init__(self):
+        self.run_list = []
+
+    def __iter__(self):
+        self.run_id = 0
+        config.increment_run_id()
+        return self
+
+    def __next__(self):
+        if self.run_id == len(self.run_list):
+            raise StopIteration
+        run = self.run_list[self.run_id].construct(increment_run=False)
+        self.run_id += 1
+        return run
 
 
 ModelOpt = namedtuple('ModelOpt', 'model, opt')

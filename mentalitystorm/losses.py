@@ -3,18 +3,22 @@ import torch
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss
 from .observe import Observable, TensorBoardObservable
+from .util import RemovableHandle
+from collections import OrderedDict
 
 
 class Lossable(_Loss):
     def __init__(self):
         super().__init__()
-        self.hooks = []
+        self.hooks = OrderedDict()
 
-    def register_term_hook(self, closure):
-        self.hooks.append(closure)
+    def register_hook(self, closure):
+        handle = RemovableHandle(self.hooks)
+        self.hooks[handle.id] = closure
+        return handle
 
-    def execute_term_hooks(self, **loss_terms):
-        for closure in self.hooks:
+    def execute_hooks(self, **loss_terms):
+        for closure in self.hooks.values():
             for key, value in loss_terms.items():
                 closure(self, key, value)
 
@@ -62,7 +66,7 @@ class MseKldLoss(Lossable):
         # https: // openreview.net / forum?id = Sy2fzU9gl
         KLD = KLD * self.beta
 
-        self.execute_term_hooks(kld_loss=KLD, mse_loss=MSE)
+        self.execute_hooks(kld_loss=KLD, mse_loss=MSE)
         return MSE + KLD
 
 class BcelKldLoss(Lossable):
@@ -101,5 +105,5 @@ class MSELoss(Lossable):
 class TestMSELoss(Lossable):
     def forward(self, y, x):
         loss = F.mse_loss(y, x)
-        self.execute_term_hooks(mse_loss=loss)
+        self.execute_hooks(mse_loss=loss)
         return loss
