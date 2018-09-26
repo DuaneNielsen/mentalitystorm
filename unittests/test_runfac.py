@@ -50,23 +50,23 @@ class TestRunFac(TestCase):
                 print('Get doing the ' + self.groove)
 
 
-        from mentalitystorm.runners import Init
+        from mentalitystorm.runners import Params
 
-        init_funky = Init(FunkyClass, 'funky_chiken', 'maximoso')
+        init_funky = Params(FunkyClass, 'funky_chiken', 'maximoso')
         funky = init_funky.construct()
         funky.funk()
 
-        init_groovy = Init(GroovyClass, 'groovy_gibbon')
+        init_groovy = Params(GroovyClass, 'groovy_gibbon')
         funky = init_groovy.construct()
         funky.funk()
 
     def test_run(self):
-        from mentalitystorm.runners import Init, Run
+        from mentalitystorm.runners import Params, Run
         from torch.optim import Adam
 
-        model_i = Init(nn.Linear, 10, 10)
-        opt_i = Init(Adam, lr=1e-3)
-        loss_i = Init(TestMSELoss)
+        model_i = Params(nn.Linear, 10, 10)
+        opt_i = Params(Adam, lr=1e-3)
+        loss_i = Params(TestMSELoss)
 
         x = torch.rand(100, 10)
         y = torch.rand(100, 10)
@@ -87,7 +87,7 @@ class TestRunFac(TestCase):
 
 
     def test_simplerunfac(self):
-        from mentalitystorm.runners import Init, Run, SimpleRunFac
+        from mentalitystorm.runners import Params, Run, SimpleRunFac
         from torch.optim import Adam
 
         x = torch.rand(100, 10)
@@ -96,7 +96,7 @@ class TestRunFac(TestCase):
         data_package = DataPackage(dataset, Selector())
 
         runs = SimpleRunFac()
-        runs.run_list.append(Run(Init(nn.Linear, 10, 10), Init(Adam, lr=1e-3), Init(TestMSELoss), data_package))
+        runs.run_list.append(Run(Params(nn.Linear, 10, 10), Params(Adam, lr=1e-3), Params(TestMSELoss), data_package))
 
         for model, opt, loss_fn, data_package, trainer, tester, run in runs:
 

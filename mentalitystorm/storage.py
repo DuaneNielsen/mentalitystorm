@@ -79,8 +79,6 @@ class Storeable(Observable):
         self.metadata = state[0]
         self.load_state_dict(state[2])
 
-
-    #todo move save to run dir
     def save(self, filename=None):
         path = Path(filename)
         self.metadata['filename'] = path.name

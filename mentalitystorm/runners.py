@@ -12,6 +12,7 @@ from tensorboardX import SummaryWriter
 from .util import Hookable
 from .losses import Lossable
 from .train import SimpleTrainer, SimpleTester
+from pathlib import Path
 
 
 class Selector(ABC):
@@ -81,13 +82,6 @@ class Epoch(Hookable):
         self.ix = index
         self.run = run
 
-    @staticmethod
-    def resume(file):
-        raise NotImplementedError
-
-    def save(self, file):
-        raise NotImplementedError
-
 
 class EpochIter:
     def __init__(self, num_epochs, run):
@@ -106,12 +100,16 @@ class EpochIter:
         self.run.epochs += 1
         return epoch
 
-
         #torch.nn.init.kaiming_uniform_(m.weight)
         #m.bias.data.fill_(0.01)
 
 
 class Init:
+    def construct(self, model=None):
+        return NotImplementedError
+
+
+class Params(Init):
     def __init__(self, clazz, *args, **kwargs):
         self.clazz = clazz
         self.args = args
@@ -122,6 +120,14 @@ class Init:
             return self.clazz(*self.args, **self.kwargs)
         else:
             return self.clazz(model.parameters(), *self.args, **self.kwargs)
+
+
+class LoadModel(Init):
+    def __init__(self, filename):
+        self.filename = filename
+
+    def construct(self, model=None):
+        return Storeable.load(self.filename)
 
 
 class Run:
@@ -147,6 +153,7 @@ class Run:
 
         self.model_i = model
         self.model = None
+        self.model_params = None
 
         self.opt_i = opt
         self.opt = None
@@ -175,14 +182,16 @@ class Run:
     def construct_model_and_optimizer(self):
         self.model = self.model_i.construct()
         self.inject_modules(self.model)
-        if self.weights_init_func is not None:
+        if self.model_params is not None:
+            self.model.load_state_dict(self.model_params)
+        elif self.weights_init_func is not None:
             self.model.apply(self.weights_init_func)
         self.opt = self.opt_i.construct(self.model)
         self.opt.run = self
         return self.model, self.opt
 
     def construct_loss(self):
-        if isinstance(self.loss_fn_i, Init):
+        if isinstance(self.loss_fn_i, Params):
             self.loss = self.loss_fn_i.construct()
         else:
             self.loss = self.loss_fn_i
@@ -204,7 +213,8 @@ class Run:
             self.run_id = 'runs/' + config.rolling_run_number() + '/' + self.run_name
         self.tb = SummaryWriter(config.tb_run_dir(self.run_id)) if tensorboard else None
 
-    def construct(self, increment_run=True, tensorboard=True):
+    def construct(self, increment_run=True, tensorboard=True, data_package=None):
+        self.data_package = data_package if self.data_package is None else self.data_package
         self.construct_model_and_optimizer()
         self.construct_loss()
         self.init_run_dir(self.model, increment_run, tensorboard)
@@ -213,23 +223,69 @@ class Run:
     def for_epochs(self, num_epochs):
         return EpochIter(num_epochs, self)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if state['model'] is not None:
+            state['model_params'] = self.model.state_dict()
+        state['model'] = None
+        state['opt'] = None
+        state['loss'] = None
+        state['data_package'] = None
+        state['tb'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+
+    def save(self):
+        file = config.datapath(self.run_id + '/epoch' + '%04d' % self.epochs + '.run')
+        import pickle
+        with open(file, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(file):
+        import pickle
+        with open(file, 'rb') as f:
+            return pickle.load(f)
+
+    @staticmethod
+    def resume(file, data_package):
+        run = Run.load(file)
+        return run.construct(increment_run=False, data_package=data_package)
+
 
 class SimpleRunFac:
     def __init__(self):
         self.run_list = []
+        self.data_package = None
+        self.resuming = False
 
     def __iter__(self):
         self.run_id = 0
-        config.increment_run_id()
+        if not self.resuming:
+            config.increment_run_id()
         return self
 
     def __next__(self):
         if self.run_id == len(self.run_list):
             raise StopIteration
-        run = self.run_list[self.run_id].construct(increment_run=False)
+        run = self.run_list[self.run_id].construct(increment_run=False, data_package=self.data_package)
         self.run_id += 1
         return run
 
+    @staticmethod
+    def resume(run_dir, data_package):
+        run_fac = SimpleRunFac()
+        run_fac.resuming = True
+        run_fac.data_package = data_package
+        dir = Path(run_dir)
+        for subdir in dir.glob('*'):
+            if subdir.is_dir():
+                # super pythonic (and completely unreadable) way to get the last epoch in the run
+                last_epoch = sorted([f for f in subdir.glob('*.run')], reverse=True)[0]
+                run_fac.run_list.append(Run.load(last_epoch.absolute()))
+        return run_fac
 
 ModelOpt = namedtuple('ModelOpt', 'model, opt')
 
