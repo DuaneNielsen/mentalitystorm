@@ -74,7 +74,8 @@ class ActionEncoder:
 
 class ObservationAction:
     def __init__(self, filename):
-        self.screen = ImageVideoWriter(filename + '.mp4')
+        mp4_path = str(filename) + '.mp4'
+        self.screen = ImageVideoWriter(mp4_path)
         self.observation = []
         self.action = []
         self.reward = []
@@ -110,9 +111,24 @@ class ObservationAction:
             pickle.dump(self, file=f)
 
     @staticmethod
-    def load(filename):
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
+    def convert_frame(frame):
+        return tvf.to_tensor(frame)
+
+    @staticmethod
+    def load(filename, image_transforms=None):
+        mp4_fn = str(filename) + '.mp4'
+        np_fn = str(filename) + '.np'
+        with open(np_fn, 'rb') as f:
+            oa = pickle.load(f)
+            if Path(mp4_fn).exists():
+                reader = imageio.get_reader(mp4_fn)
+                frames = []
+                for frame in reader:
+                    frame = ObservationAction.convert_frame(frame)
+                    frames.append(frame)
+                oa.screen = torch.stack(frames, dim=0)
+        return oa
+
 
 
 class ActionEmbedding():
@@ -139,14 +155,23 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
             self.count += 1
 
     def __getitem__(self, index):
-        filepath = self.path / str(index)
-        oa = ObservationAction.load(filepath.absolute())
+        np_filepath = self.path / str(index)
+        oa = ObservationAction.load(np_filepath.absolute())
+
         return torch.Tensor(oa.screen), torch.Tensor(oa.observation), torch.Tensor(oa.action), \
                torch.Tensor(oa.reward), torch.Tensor(oa.done), torch.Tensor(oa.latent)
 
     def __len__(self):
         return self.count
 
+
+class ImageVideoReader:
+    def __init__(self, file):
+        self.reader = imageio.get_reader(self.file)
+
+    def play(self):
+        for i, im in enumerate(self.reader):
+            print('mean of frame %i is %1.1f' % (i, im.mean()))
 
 class ImageVideoWriter:
     def __init__(self, file):
