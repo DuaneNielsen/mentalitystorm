@@ -10,7 +10,10 @@ from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 import imageio
 from PIL import Image
+from collections import namedtuple
 
+
+RLStep = namedtuple('Step', 'screen, observation, action, reward, done')
 
 
 """ Dispatcher allows dipatch to views.
@@ -87,7 +90,7 @@ class Observable:
     def endObserverSession(self):
         for tag in dispatcher.pipelineView:
             for observer in dispatcher.pipelineView[tag]:
-                observer.endSession()
+                observer.end_session()
 
     """ This is freaking brilliant, need more of this kind of thing!
     Attach to model.register_forward_hook(Observerable.send_output_as_image)
@@ -185,6 +188,26 @@ class OpenCV(View):
         # Display the resulting frame
         cv2.imshow(self.title, frame)
         cv2.waitKey(1)
+
+
+class ImageViewer(View):
+    def __init__(self, title='title', screen_resolution=(640,480)):
+        super(ImageViewer, self).__init__()
+        self.C = None
+        self.title = title
+        self.screen_resolution = screen_resolution
+
+    def update(self, screen, format):
+
+        frame = NumpyRGBWrapper(screen, format)
+        frame = frame.getImage()
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        frame = cv2.resize(frame, self.screen_resolution)
+
+        # Display the resulting frame
+        cv2.imshow(self.title, frame)
+        cv2.waitKey(1)
+
 
 
 class Plotter():
@@ -340,9 +363,48 @@ class ActionEmbedding():
 
 class ObservationAction:
     def __init__(self):
+        self.first = True
+        self.screen = None
         self.observation = None
         self.action = None
+        self.reward = None
+        self.done = None
+        self.latent = None
 
+    def add(self, screen, observation, action, reward, done, latent=None):
+        if self.first:
+            self.first = False
+            if screen is not None:
+                self.screen = np.array(screen, dtype='float32')
+            if observation is not None:
+                self.observation = np.array(observation, dtype='float32')
+            self.action = np.array(action, dtype='float32')
+            self.reward = np.array([reward], dtype='float32')
+            self.done = np.array([done], dtype='float32')
+            if latent is not None:
+                self.latent = np.array(latent, dtype='float32')
+        else:
+            if screen is not None:
+                self.screen = np.append(self.screen, screen, axis=0)
+            if observation is not None:
+                self.observation = np.append(self.observation, observation, axis=0)
+            if latent is not None:
+                self.latent = np.append(self.latent, latent, axis=0)
+            self.action = np.append(self.action, action, axis=0)
+            self.reward = np.append(self.reward, [reward], axis=0)
+            self.done = np.append(self.done, [done], axis=0)
+
+    def save(self, filename):
+        from pathlib import Path
+        path = Path(filename)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path.absolute(), 'wb') as f:
+            pickle.dump(self, file=f)
+
+    @staticmethod
+    def load(filename):
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
 
 """
 update takes a tuple of ( numpyRGB, integer )
@@ -350,11 +412,11 @@ and saves as tensors
 """
 
 
-class ActionEncoder(View):
-    def __init__(self, model, env, name):
-        View.__init__(self)
+class ActionEncoder:
+    def __init__(self, env, name, model=None):
         self.model = model
-        self.model.eval()
+        if model is not None:
+            self.model.eval()
         self.session = 1
         self.sess_obs_act = None
         self.action_embedding = ActionEmbedding(env)
@@ -364,36 +426,43 @@ class ActionEncoder(View):
         self.oa = None
 
     def to(self, device):
-        self.model.to(device)
+        if self.model is not None:
+            self.model.to(device)
         self.device = device
         return self
 
-    def update(self, screen_action, metadata):
-        with torch.no_grad():
-            self.model.eval()
-        x = tvf.to_tensor(screen_action[0].copy()).detach().unsqueeze(0).to(self.device)
-        mu, logsigma = self.model.encoder(x)
-        a = self.action_embedding.toTensor(screen_action[1]).detach()
+    def update(self, rlstep):
+        screen = rlstep.screen
+        observation = rlstep.observation
+        action = rlstep.action
+        reward = rlstep.reward
+        done = rlstep.done
+        import timeit
+        start_time = timeit.default_timer()
 
-        obs_n = mu.detach().cpu().numpy()
+        """ if a model is set, use it to compress the screen"""
+        if self.model is not None:
+            with torch.no_grad():
+                self.model.eval()
+        latent_n = None
+        if self.model is not None:
+            x = tvf.to_tensor(screen.copy()).detach().unsqueeze(0).to(self.device)
+            mu, logsigma = self.model.encoder(x)
+            latent_n = mu.detach().cpu().numpy()
+
+        a = self.action_embedding.toTensor(action).detach()
         act_n = a.cpu().numpy()
         act_n = np.expand_dims(act_n, axis=0)
-
+        print('act_n %f' % (timeit.default_timer() - start_time))
+        start_time = timeit.default_timer()
         if self.oa is None:
             self.oa = ObservationAction()
-            self.oa.observation = np.empty(obs_n.shape, dtype='float32')
-            self.oa.action = np.empty(act_n.shape, dtype='float32')
 
-        self.oa.observation = np.append(self.oa.observation, obs_n, axis=0)
-        self.oa.action = np.append(self.oa.action, act_n, axis=0)
+        self.oa.add(screen, observation, act_n, reward, done, latent_n)
+        print('add %f'%(timeit.default_timer() - start_time))
 
-    def endSession(self):
-
-        path = config.basepath() / self.name / 'latent' / str(self.session)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        file = open(path.absolute(), 'wb')
-        pickle.dump(self.oa, file=file)
-        self.session += 1
+    def save_session(self, filename):
+        self.oa.save(filename)
         self.oa = None
 
 
