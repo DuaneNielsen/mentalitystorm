@@ -47,6 +47,8 @@ class NumpyRGBWrapper(BaseImageWrapper):
             self.numpyRGB = np.ndarray.astype(self.numpyRGB, dtype='float32')
         elif self.format == 'numpyRGB3':
             self.numpyRGB = np.transpose(image, [2,0,1])
+        elif self.format == 'tensor_gym_RGB':
+            self.numpyRGB = image.cpu().numpy().transpose(1, 2, 0)
         else:
             raise Exception('conversion ' + self.format + ' to numpyRGB not implemented')
 

@@ -1,7 +1,8 @@
 from .config import config
 from .elastic import ElasticSearchUpdater
 from .observe import dispatcher, Dispatcher, View, Observable, OpenCV, TensorBoardObservable, TensorBoard, ImageFileWriter, \
-    ImageVideoWriter, ActionEncoder, ImageChannel, RLStep, ImageViewer
+    ImageChannel, ImageViewer
+from mentalitystorm.atari import ActionEncoder, ObservationAction, ImageVideoWriter, RLStep
 from .image import NumpyRGBWrapper, TensorPILWrapper
 from .train import Trainable, Checkable, SimpleTrainer, SimpleTester
 from .storage import Storeable, ModelDb

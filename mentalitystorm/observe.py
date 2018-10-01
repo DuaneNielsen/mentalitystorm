@@ -1,20 +1,9 @@
 from abc import ABC, abstractmethod
 from .image import NumpyRGBWrapper
-from .config import config
-import torch
-import torchvision.transforms.functional as tvf
-import pickle
-import numpy as np
 import cv2
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
-import imageio
 from PIL import Image
-from collections import namedtuple
-
-
-RLStep = namedtuple('Step', 'screen, observation, action, reward, done')
-
 
 """ Dispatcher allows dipatch to views.
 View's register here
@@ -124,30 +113,6 @@ class View(ABC):
 
     def endSession(self):
         pass
-
-
-class ImageVideoWriter(View):
-    def __init__(self, directory, prefix):
-        self.directory = directory
-        self.prefix = prefix
-        self.number = 0
-        self.writer = None
-
-    def update(self, screen, metadata=None):
-
-        in_format = metadata['format'] if metadata is not None and 'format' in metadata else None
-
-        if not self.writer:
-            self.number += 1
-            file = self.directory + self.prefix + str(self.number) + '.mp4'
-            self.writer = imageio.get_writer(file, macro_block_size=None)
-
-        frame = NumpyRGBWrapper(screen, in_format).numpyRGB
-        self.writer.append_data(frame)
-
-    def endSession(self):
-        self.writer.close()
-        self.writer = None
 
 
 class ImageFileWriter(View):
@@ -349,121 +314,6 @@ class TensorBoardObservable:
         metadata['tag'] = label
         metadata['step'] = step
         self.updateObservers('text', data, metadata)
-
-
-class ActionEmbedding():
-    def __init__(self, env):
-        self.env = env
-
-    def toTensor(self, action):
-        action_t = torch.zeros(self.env.action_space.n)
-        action_t[action] = 1.0
-        return action_t
-
-
-class ObservationAction:
-    def __init__(self):
-        self.first = True
-        self.screen = None
-        self.observation = None
-        self.action = None
-        self.reward = None
-        self.done = None
-        self.latent = None
-
-    def add(self, screen, observation, action, reward, done, latent=None):
-        if self.first:
-            self.first = False
-            if screen is not None:
-                self.screen = np.array(screen, dtype='float32')
-            if observation is not None:
-                self.observation = np.array(observation, dtype='float32')
-            self.action = np.array(action, dtype='float32')
-            self.reward = np.array([reward], dtype='float32')
-            self.done = np.array([done], dtype='float32')
-            if latent is not None:
-                self.latent = np.array(latent, dtype='float32')
-        else:
-            if screen is not None:
-                self.screen = np.append(self.screen, screen, axis=0)
-            if observation is not None:
-                self.observation = np.append(self.observation, observation, axis=0)
-            if latent is not None:
-                self.latent = np.append(self.latent, latent, axis=0)
-            self.action = np.append(self.action, action, axis=0)
-            self.reward = np.append(self.reward, [reward], axis=0)
-            self.done = np.append(self.done, [done], axis=0)
-
-    def save(self, filename):
-        from pathlib import Path
-        path = Path(filename)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path.absolute(), 'wb') as f:
-            pickle.dump(self, file=f)
-
-    @staticmethod
-    def load(filename):
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
-
-"""
-update takes a tuple of ( numpyRGB, integer )
-and saves as tensors
-"""
-
-
-class ActionEncoder:
-    def __init__(self, env, name, model=None):
-        self.model = model
-        if model is not None:
-            self.model.eval()
-        self.session = 1
-        self.sess_obs_act = None
-        self.action_embedding = ActionEmbedding(env)
-        self.device = torch.device('cpu')
-        self.name = name
-        self.env = env
-        self.oa = None
-
-    def to(self, device):
-        if self.model is not None:
-            self.model.to(device)
-        self.device = device
-        return self
-
-    def update(self, rlstep):
-        screen = rlstep.screen
-        observation = rlstep.observation
-        action = rlstep.action
-        reward = rlstep.reward
-        done = rlstep.done
-        import timeit
-        start_time = timeit.default_timer()
-
-        """ if a model is set, use it to compress the screen"""
-        if self.model is not None:
-            with torch.no_grad():
-                self.model.eval()
-        latent_n = None
-        if self.model is not None:
-            x = tvf.to_tensor(screen.copy()).detach().unsqueeze(0).to(self.device)
-            mu, logsigma = self.model.encoder(x)
-            latent_n = mu.detach().cpu().numpy()
-
-        a = self.action_embedding.toTensor(action).detach()
-        act_n = a.cpu().numpy()
-        act_n = np.expand_dims(act_n, axis=0)
-        print('act_n %f' % (timeit.default_timer() - start_time))
-        start_time = timeit.default_timer()
-        if self.oa is None:
-            self.oa = ObservationAction()
-
-        self.oa.add(screen, observation, act_n, reward, done, latent_n)
-        print('add %f'%(timeit.default_timer() - start_time))
-
-    def save_session(self, filename):
-        self.oa.save(filename)
-        self.oa = None
 
 
 class SummaryWriterWithGlobal(SummaryWriter):
