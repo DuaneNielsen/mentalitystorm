@@ -3,3 +3,4 @@ numpy
 tabulate
 gym
 matplotlib
+intervaltree

@@ -15,7 +15,6 @@ class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservabl
         self.variational = variational
 
     def forward(self, x):
-        input_shape = x.shape
         indices = None
 
         self.updateObserversWithImage('input', x[0], training=self.training)
@@ -37,9 +36,6 @@ class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservabl
             decoded = self.decoder(z, indices)
         else:
             decoded = self.decoder(z)
-
-        # should probably make decoder return same shape as encoder
-        decoded = decoded.view(input_shape)
 
         self.updateObserversWithImage('output', decoded[0].data, training=self.training)
 

@@ -48,12 +48,17 @@ class BceKldLoss(Lossable, Observable, TensorBoardObservable):
 
 
 class MseKldLoss(Lossable):
-    def __init__(self, beta=1.0):
+    def __init__(self, beta=1.0, transform=None):
         super().__init__()
         self.beta = beta
+        self.transform = transform
 
     # Reconstruction + KL divergence losses summed over all elements and batch
     def forward(self, recon_x, mu, logvar, x):
+
+        if self.transform is not None:
+            x = self.transform(x)
+
         MSE = F.mse_loss(recon_x, x, reduction='sum')
 
         # see Appendix B from VAE paper:
