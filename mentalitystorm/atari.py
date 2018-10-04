@@ -206,21 +206,29 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
 
 
 class GymImageDataset(data_utils.Dataset):
-    def __init__(self, directory, transform=None):
+    def __init__(self, directory, input_transform=None, target_transform=None):
         self.pngs = sorted(Path(directory).glob('pic*.png'))
         self.rewards = sorted(Path(directory).glob('rew*.np'))
-        if transform is None:
-            self.transform = TVT.ToTensor()
-        else:
-            self.transform = transform
+        self.input_transform = input_transform
+        self.target_transform = target_transform
 
     def __getitem__(self, index):
         with self.pngs[index].open('rb') as f:
             image = imageio.imread(f)
-            image = self.transform(image)
+
+            if self.input_transform is not None:
+                input_image = self.input_transform(image)
+            else:
+                input_image = image
+
+            if self.target_transform is not None:
+                target_image = self.target_transform(image)
+            else:
+                target_image = image
+
         with self.rewards[index].open('rb') as f:
             reward = pickle.load(f)
-        return image, reward
+        return input_image, target_image, reward
 
     def __len__(self):
         return len(self.pngs)

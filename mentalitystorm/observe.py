@@ -27,7 +27,6 @@ class Dispatcher:
     def unregisterView(id):
         del dispatcher.pipelineView[id[0]][id[1]]
 
-print('init Dispatacher')
 dispatcher = Dispatcher()
 
 """ Observable provides dispatch method.

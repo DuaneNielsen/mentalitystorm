@@ -26,28 +26,10 @@ class Lossable(_Loss):
         raise NotImplemented
 
 
-class BceKldLoss(Lossable, Observable, TensorBoardObservable):
-    def __init__(self):
-        Observable.__init__(self)
-        TensorBoardObservable.__init__(self)
-
-    # Reconstruction + KL divergence losses summed over all elements and batch
-    def forward(self, recon_x, mu, logvar, x):
-        BCE = F.binary_cross_entropy(recon_x, x)
-
-        self.writeScalarToTB('BCELoss', BCE.item(), 'loss/BCELoss')
-        # see Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
-        self.writeScalarToTB('KLDLoss', KLD.item(), 'loss/KLDLoss')
-
-        return BCE + KLD
-
-
-class MseKldLoss(Lossable):
+class BceKldLoss(Lossable):
+    """
+    :param transform applies a transform to the ground truth
+    """
     def __init__(self, beta=1.0, transform=None):
         super().__init__()
         self.beta = beta
@@ -55,11 +37,30 @@ class MseKldLoss(Lossable):
 
     # Reconstruction + KL divergence losses summed over all elements and batch
     def forward(self, recon_x, mu, logvar, x):
-
         if self.transform is not None:
             x = self.transform(x)
 
-        MSE = F.mse_loss(recon_x, x, reduction='sum')
+        BCE = F.binary_cross_entropy(recon_x, x, reduction='elementwise_mean')
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / mu.numel()
+
+        self.execute_hooks(kld_loss=KLD, bce_loss=BCE)
+        return BCE + KLD
+
+
+class MseKldLoss(Lossable):
+    def __init__(self, beta=1.0):
+        super().__init__()
+        self.beta = beta
+
+    # Reconstruction + KL divergence losses summed over all elements and batch
+    def forward(self, recon_x, mu, logvar, x):
+
+        MSE = F.mse_loss(recon_x, x, reduction='elementwise_mean')
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -69,15 +70,16 @@ class MseKldLoss(Lossable):
 
         # beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework
         # https: // openreview.net / forum?id = Sy2fzU9gl
-        KLD = KLD * self.beta
+        KLD = KLD * self.beta / mu.numel()
 
         self.execute_hooks(kld_loss=KLD, mse_loss=MSE)
         return MSE + KLD
 
+
 class BcelKldLoss(Lossable):
     # Reconstruction + KL divergence losses summed over all elements and batch
     def forward(self, recon_x, mu, logvar, x):
-        BCE = F.binary_cross_entropy_with_logits(recon_x, x, reduction='sum')
+        BCE = F.binary_cross_entropy_with_logits(recon_x, x, reduction='elementwise_mean')
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -91,7 +93,7 @@ class BcelKldLoss(Lossable):
 class BceLoss(Lossable):
     # Reconstruction + KL divergence losses summed over all elements and batch
     def forward(self, recon_x, mu, logvar, x):
-        BCE = F.binary_cross_entropy(recon_x, x)
+        BCE = F.binary_cross_entropy(recon_x, x, reduction='elementwise_mean')
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
