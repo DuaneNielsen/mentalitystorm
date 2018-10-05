@@ -154,16 +154,22 @@ class OpenCV(View):
         cv2.waitKey(1)
 
 
-class ImageViewer(View):
-    def __init__(self, title='title', screen_resolution=(640,480)):
-        super(ImageViewer, self).__init__()
+class ImageViewer:
+    def __init__(self, title='title', screen_resolution=(640,480), format=None):
         self.C = None
         self.title = title
         self.screen_resolution = screen_resolution
+        self.format = format
 
-    def update(self, screen, format):
+    def view_input(self, model, input, output):
+        self.update(input[0][0, 0:3].data)
 
-        frame = NumpyRGBWrapper(screen, format)
+    def view_output(self, model, input, output):
+        self.update(output[0][0, 0:3].data)
+
+    def update(self, screen):
+
+        frame = NumpyRGBWrapper(screen, self.format)
         frame = frame.getImage()
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         frame = cv2.resize(frame, self.screen_resolution)
