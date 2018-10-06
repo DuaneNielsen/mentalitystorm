@@ -56,11 +56,12 @@ def write_histogram(epoch):
 
 def register_tb(run):
     handles = Handles()
-    handles += run.trainer.register_after_hook(tb_train_loss)
+    if run.loss is not None:
+        handles += run.trainer.register_after_hook(tb_train_loss)
+        handles += run.tester.register_after_hook(tb_test_loss)
+        handles += run.loss.register_hook(tb_train_loss_term)
     handles += run.trainer.register_after_hook(tb_image)
-    handles += run.tester.register_after_hook(tb_test_loss)
     handles += run.tester.register_after_hook(tb_image)
-    handles += run.loss.register_hook(tb_train_loss_term)
     #run.tb.add_graph(run.model, (run.data_package.dataset[0][0].cpu().unsqueeze(0),))
     return handles
 

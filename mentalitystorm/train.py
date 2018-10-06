@@ -100,6 +100,30 @@ class SimpleTester(Hookable):
             run.step += 1
 
 
+class SimpleInference(Hookable):
+    def infer(self, model, lossfunc, dataloader, selector, run, epoch):
+        device = config.device()
+        model.to(device)
+        model.eval()
+        model.epoch = epoch
+
+        for payload in dataloader:
+
+            input_data = selector.get_input(payload, device)
+
+            before_args = BeforeArgs(self, payload, input_data, None, model, None, lossfunc, dataloader,
+                                     selector, run, epoch)
+            self.execute_before(before_args)
+
+            output_data = model(*input_data)
+
+            after_args = AfterArgs(self, payload, input_data, None, model, None, lossfunc, dataloader,
+                                   selector, run, epoch, output_data, None)
+            self.execute_after(after_args)
+
+            run.step += 1
+
+
 class Trainable(Observable, TensorBoardObservable):
 
     @staticmethod
