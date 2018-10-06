@@ -28,8 +28,17 @@ def tb_test_loss(args):
 
 def tb_image(args):
     if args.run.step % 200 == 0:
-        input_image = args.input_data[0][0, 0:3].data
-        output_image = args.output_data[0][0, 0:3].data
+        input_data = args.input_data
+        output_data = args.output_data
+        if isinstance(input_data, tuple):
+            input_image = input_data[0][0, 0:3].data
+        else:
+            input_image = input_data[0, 0:3].data
+        if isinstance(output_data, tuple):
+            output_image = output_data[0][0, 0:3].data
+        else:
+            output_image = output_data[0, 0:3].data
+
         args.run.tb.add_image('input', input_image, args.run.step)
         args.run.tb.add_image('output', output_image, args.run.step)
 

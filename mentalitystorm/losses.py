@@ -75,6 +75,37 @@ class MseKldLoss(Lossable):
         self.execute_hooks(kld_loss=KLD, mse_loss=MSE)
         return MSE + KLD
 
+class GECOMseKldLoss(Lossable):
+    def __init__(self, beta=1.0, cappa=0.99):
+        super().__init__()
+        self.beta = beta
+        self.running_mse = None
+
+    # Reconstruction + KL divergence losses summed over all elements and batch
+    def forward(self, recon_x, mu, logvar, x):
+
+        MSE = F.mse_loss(recon_x, x, reduction='elementwise_mean')
+
+        if self.running_mse is None:
+            self.running_mse = MSE.data.mean().item()
+        else:
+            self.running_mse = self.running_mse * self.cappa + MSE.data.mean().item() * (1 - self.cappa)
+
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+        # beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework
+        # https: // openreview.net / forum?id = Sy2fzU9gl
+        KLD = KLD * self.beta / mu.numel()
+
+        self.execute_hooks(kld_loss=KLD, mse_loss=MSE)
+        return MSE + KLD
+
+
 
 class BcelKldLoss(Lossable):
     # Reconstruction + KL divergence losses summed over all elements and batch
@@ -105,8 +136,10 @@ class BceLoss(Lossable):
 
 
 class MSELoss(Lossable):
-    def forward(self, recon_x, mu, logvar, x):
-        return F.mse_loss(recon_x, x)
+    def forward(self, recon_x, x):
+        MSE = F.mse_loss(recon_x, x)
+        self.execute_hooks(mse_loss=MSE)
+        return MSE
 
 
 class TestMSELoss(Lossable):

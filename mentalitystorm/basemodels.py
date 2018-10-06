@@ -4,6 +4,55 @@ from torch import nn as nn
 from mentalitystorm import Dispatcher, Observable, Trainable, TensorBoardObservable
 
 
+class BaseAE(nn.Module):
+    def __init__(self, encoder, decoder):
+        nn.Module.__init__(self)
+
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def forward(self, x):
+        z = self.encoder(x)
+        return self.decoder(z)
+
+    def encode(self, x):
+        return self.encoder(x)
+
+
+class MultiChannelAE(nn.Module):
+    def __init__(self):
+        nn.Module.__init__(self)
+        self.ae_l = []
+        self.ch_l = []
+
+    def add_ae(self, auto_encoder, channels):
+        """
+
+        :param auto_encoder: the BaseAE to use
+        :param channels: LongTensor of channels to use for input
+        """
+        self.ae_l.append(auto_encoder)
+        self.ch_l.append(channels)
+
+    def forward(self, x):
+        z_l = []
+        for channels, ae in zip(self.ch_l, self.ae_l):
+            z = ae.encode(x[:, channels, :, :])
+            z_l.append(z)
+        result = torch.cat(z_l, dim=1)
+        return result
+
+
+class DummyCoder(nn.Module):
+    def forward(self, x):
+        return x
+
+
+class DummyAE(BaseAE):
+    def __init__(self):
+        BaseAE.__init__(self, DummyCoder(), DummyCoder())
+
+
 class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservable):
     def __init__(self, encoder, decoder, variational=False):
         nn.Module.__init__(self)
@@ -16,8 +65,7 @@ class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservabl
 
     def forward(self, x):
         indices = None
-
-        self.updateObserversWithImage('input', x[0], training=self.training)
+        logvar = None
 
         encoded = self.encoder(x)
         mu = encoded[0]
@@ -25,9 +73,6 @@ class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservabl
         if len(encoded) > 2:
             indices = encoded[2]
 
-        # if z can be shown as an image dispatch it
-        if mu.shape[1] == 3 or mu.shape[1] == 1:
-            self.updateObserversWithImage('z', mu[0].data)
         self.metadata['z_size'] = mu[0].data.numel()
 
         z = self.reparameterize(mu, logvar)
@@ -36,8 +81,6 @@ class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservabl
             decoded = self.decoder(z, indices)
         else:
             decoded = self.decoder(z)
-
-        self.updateObserversWithImage('output', decoded[0].data, training=self.training)
 
         return decoded, mu, logvar
 

@@ -148,7 +148,7 @@ class Run:
         if not isinstance(model, Init):
             raise Exception('model should be a Initializer, dont put a naked model in!')
 
-        if not isinstance(opt, Init):
+        if opt is not None and not isinstance(opt, Init):
             raise Exception('model should be a Initializer, dont put a naked optimizer in!')
 
         self.model_i = model
@@ -186,8 +186,9 @@ class Run:
             self.model.load_state_dict(self.model_params)
         elif self.weights_init_func is not None:
             self.model.apply(self.weights_init_func)
-        self.opt = self.opt_i.construct(self.model)
-        self.opt.run = self
+        if self.opt is not None:
+            self.opt = self.opt_i.construct(self.model)
+            self.opt.run = self
         return self.model, self.opt
 
     def construct_loss(self):
@@ -250,9 +251,9 @@ class Run:
             return pickle.load(f)
 
     @staticmethod
-    def resume(file, data_package):
+    def resume(file, data_package, increment_run=False):
         run = Run.load(file)
-        return run.construct(increment_run=False, data_package=data_package)
+        return run.construct(increment_run=increment_run, data_package=data_package)
 
 
 class SimpleRunFac:
@@ -275,9 +276,9 @@ class SimpleRunFac:
         return run
 
     @staticmethod
-    def resume(run_dir, data_package):
+    def resume(run_dir, data_package, resuming=True):
         run_fac = SimpleRunFac()
-        run_fac.resuming = True
+        run_fac.resuming = resuming
         run_fac.data_package = data_package
         dir = Path(run_dir)
         for subdir in dir.glob('*'):
@@ -286,6 +287,16 @@ class SimpleRunFac:
                 last_epoch = sorted([f for f in subdir.glob('*.run')], reverse=True)[0]
                 run_fac.run_list.append(Run.load(last_epoch.absolute()))
         return run_fac
+
+    @staticmethod
+    def reuse(run_dir, data_package):
+        """
+        Reuses an existing run on a new datasset
+        :param run_dir:
+        :param data_package:
+        :return:
+        """
+        return SimpleRunFac.resume(run_dir, data_package, False)
 
 ModelOpt = namedtuple('ModelOpt', 'model, opt')
 

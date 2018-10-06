@@ -155,17 +155,24 @@ class OpenCV(View):
 
 
 class ImageViewer:
-    def __init__(self, title='title', screen_resolution=(640,480), format=None):
+    def __init__(self, title='title', screen_resolution=(640,480), format=None, channels=[0, 1, 2]):
         self.C = None
         self.title = title
         self.screen_resolution = screen_resolution
         self.format = format
+        self.channels = channels
 
     def view_input(self, model, input, output):
-        self.update(input[0][0, 0:3].data)
+        if isinstance(input, tuple):
+            self.update(input[0][0, self.channels].data)
+        else:
+            self.update(input[0, self.channels].data)
 
     def view_output(self, model, input, output):
-        self.update(output[0][0, 0:3].data)
+        if isinstance(output, tuple):
+            self.update(output[0][0, self.channels].data)
+        else:
+            self.update(output[0, self.channels].data)
 
     def update(self, screen):
 
