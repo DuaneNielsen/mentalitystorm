@@ -1,8 +1,6 @@
 import torch
 from torch import nn as nn
 
-from mentalitystorm import Dispatcher, Observable, Trainable, TensorBoardObservable
-
 
 class BaseAE(nn.Module):
     def __init__(self, encoder, decoder):
@@ -62,11 +60,9 @@ class DummyAE(BaseAE):
         BaseAE.__init__(self, DummyCoder(), DummyCoder())
 
 
-class BaseVAE(nn.Module, Dispatcher, Trainable, Observable, TensorBoardObservable):
+class BaseVAE(nn.Module):
     def __init__(self, encoder, decoder, variational=False):
         nn.Module.__init__(self)
-        Dispatcher.__init__(self)
-        TensorBoardObservable.__init__(self)
 
         self.encoder = encoder
         self.decoder = decoder

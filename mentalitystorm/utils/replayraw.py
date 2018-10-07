@@ -1,10 +1,9 @@
-import torch
-from mentalitystorm.atari import ActionEncoderDataset, collate_action_observation
+from mentalitystorm.atari import collate_action_observation
+from mentalitystorm.data import ActionEncoderDataset
 import torch.utils.data as data_utils
-from mentalitystorm import ImageViewer
-import numpy as np
+from mentalitystorm.observe import ImageViewer
 
-screen_viewer = ImageViewer('input', (320, 480))
+screen_viewer = ImageViewer('input', (320, 480), 'tensor_gym_RGB')
 
 dataset = ActionEncoderDataset(r'c:\data\SpaceInvaders-v4\rl_raw_v1')
 
@@ -13,4 +12,4 @@ loader = data_utils.DataLoader(dataset=dataset, batch_size=1, shuffle=False, dro
 
 for screen, observation, action, reward, done, latent in loader:
     for frame in screen[0]:
-        screen_viewer.update(frame, 'tensor_gym_RGB')
+        screen_viewer.update(frame)

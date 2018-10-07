@@ -3,7 +3,8 @@ from abc import ABC, abstractmethod
 import torch
 from torchvision.transforms import ToTensor
 
-from mentalitystorm import Dispatcher, Observable, Hookable, RLStep
+from mentalitystorm.data_containers import RLStep
+from mentalitystorm.util import Hookable
 
 
 class Policy(ABC):
@@ -35,7 +36,7 @@ class VCPolicy(Policy):
         return the_action.item()
 
 
-class Rollout(Dispatcher, Observable, Hookable):
+class Rollout(Hookable):
     def __init__(self, env):
         Hookable.__init__(self)
         self.env = env
@@ -73,3 +74,43 @@ class Rollout(Dispatcher, Observable, Hookable):
                 print("Episode finished after {} timesteps".format(t+1))
                 break
         self.end_session(episode)
+
+
+class RolloutGen(object):
+    def __init__(self, env, policy):
+        self.env = env
+        self.policy = policy
+        self.done = True
+        self.action = None
+
+    def __iter__(self):
+        return self
+
+    # Python 3 compatibility
+    def __next__(self):
+        return self.next()
+
+    def step(self, action):
+        observation, reward, done, info = self.env.step(action)
+        screen = self.env.render(mode='rgb_array')
+        action = self.policy.action(screen, observation)
+        return screen, observation, reward, done, info, action
+
+    def next(self):
+
+        if self.done:
+            observation = self.env.reset()
+            screen = self.env.render(mode='rgb_array')
+            reward = 0
+            self.done = False
+            self.action = self.policy.action(screen, observation)
+            info = {}
+            return screen, observation, reward, self.done, info, self.action
+
+        else:
+            screen, observation, reward, done, info, action = self.step(self.action)
+            self.action = action
+            self.done = done
+            return screen, observation, reward, done, info, action
+
+

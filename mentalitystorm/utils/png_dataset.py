@@ -1,7 +1,9 @@
 import torch
-from mentalitystorm.atari import ActionEncoderDataset, collate_action_observation
+from mentalitystorm.atari import collate_action_observation
+from mentalitystorm.data import ActionEncoderDataset
 import torch.utils.data as data_utils
-from mentalitystorm import ImageViewer, NumpyRGBWrapper
+from mentalitystorm.observe import ImageViewer
+from mentalitystorm.image import NumpyRGBWrapper
 import imageio
 from pathlib import Path
 import pickle

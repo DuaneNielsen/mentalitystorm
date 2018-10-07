@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from .image import NumpyRGBWrapper
-from .config import config
 import cv2
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt

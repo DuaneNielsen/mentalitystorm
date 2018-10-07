@@ -1,6 +1,7 @@
 import numpy as np
 
-from mentalitystorm import Handles, OpenCV
+from mentalitystorm.util import Handles
+from mentalitystorm.observe import OpenCV
 
 def print_loss_term(key, value):
     print('%s %f' % (key, value.item()))

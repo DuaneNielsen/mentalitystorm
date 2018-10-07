@@ -1,8 +1,6 @@
-from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss
-from .observe import Observable, TensorBoardObservable
 from .util import RemovableHandle
 from collections import OrderedDict
 

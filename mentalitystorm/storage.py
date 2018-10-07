@@ -3,7 +3,7 @@ from pathlib import Path
 import inspect
 import hashlib
 import logging
-from mentalitystorm import Observable, config
+from mentalitystorm.config import config
 from .config import slug
 
 log = logging.getLogger('Storage')
@@ -17,7 +17,7 @@ ie: nn.Module.__init__(self)
     Storable.__init(self, arg1, arg2, etc)
 fixing to make less fragile is on todo, but not trivial...
 """
-class Storeable(Observable):
+class Storeable():
     def __init__(self):
         self.classname = type(self)
 
