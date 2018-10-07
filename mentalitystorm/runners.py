@@ -180,16 +180,20 @@ class Run:
         self.weights_init_func = weights_init_func
 
     def construct_model_and_optimizer(self):
+        self.construct_model()
+        if self.opt_i is not None:
+            self.opt = self.opt_i.construct(self.model)
+            self.opt.run = self
+        return self.model, self.opt
+
+    def construct_model(self):
         self.model = self.model_i.construct()
         self.inject_modules(self.model)
         if self.model_params is not None:
             self.model.load_state_dict(self.model_params)
         elif self.weights_init_func is not None:
             self.model.apply(self.weights_init_func)
-        if self.opt is not None:
-            self.opt = self.opt_i.construct(self.model)
-            self.opt.run = self
-        return self.model, self.opt
+        return self.model
 
     def construct_loss(self):
         if isinstance(self.loss_fn_i, Params):
@@ -245,6 +249,11 @@ class Run:
             pickle.dump(self, f)
 
     @staticmethod
+    def load_model(file):
+        run = Run.load(file)
+        return run.construct_model()
+
+    @staticmethod
     def load(file):
         import pickle
         with open(file, 'rb') as f:
@@ -257,14 +266,14 @@ class Run:
 
 
 class SimpleRunFac:
-    def __init__(self):
+    def __init__(self, increment_run=True):
         self.run_list = []
         self.data_package = None
-        self.resuming = False
+        self.increment_run = increment_run
 
     def __iter__(self):
         self.run_id = 0
-        if not self.resuming:
+        if self.increment_run:
             config.increment_run_id()
         return self
 
@@ -276,9 +285,9 @@ class SimpleRunFac:
         return run
 
     @staticmethod
-    def resume(run_dir, data_package, resuming=True):
+    def resume(run_dir, data_package, increment_run=False):
         run_fac = SimpleRunFac()
-        run_fac.resuming = resuming
+        run_fac.increment_run = increment_run
         run_fac.data_package = data_package
         dir = Path(run_dir)
         for subdir in dir.glob('*'):
@@ -288,6 +297,7 @@ class SimpleRunFac:
                 run_fac.run_list.append(Run.load(last_epoch.absolute()))
         return run_fac
 
+    #todo this needs a re-write, should support re-use of RUNS not RunFacs
     @staticmethod
     def reuse(run_dir, data_package):
         """
@@ -296,7 +306,7 @@ class SimpleRunFac:
         :param data_package:
         :return:
         """
-        return SimpleRunFac.resume(run_dir, data_package, False)
+        return SimpleRunFac.resume(run_dir, data_package, True)
 
 ModelOpt = namedtuple('ModelOpt', 'model, opt')
 

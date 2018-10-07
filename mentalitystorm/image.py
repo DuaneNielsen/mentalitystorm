@@ -50,7 +50,7 @@ class NumpyRGBWrapper(BaseImageWrapper):
         elif self.format == 'tensor_gym_RGB':
             self.numpyRGB = image.cpu().numpy().transpose(1, 2, 0)
         else:
-            raise Exception('conversion ' + self.format + ' to numpyRGB not implemented')
+            raise Exception('conversion ' + str(self.format) + ' to numpyRGB not implemented')
 
     def getImage(self):
         return self.numpyRGB

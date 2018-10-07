@@ -155,24 +155,28 @@ class OpenCV(View):
 
 
 class ImageViewer:
-    def __init__(self, title='title', screen_resolution=(640,480), format=None, channels=[0, 1, 2]):
+    def __init__(self, title='title', screen_resolution=(640,480), format=None, channels=None):
         self.C = None
         self.title = title
         self.screen_resolution = screen_resolution
         self.format = format
         self.channels = channels
 
+    def get_channels(self, input):
+        channels = self.channels if self.channels is not None else range(input.shape[1])
+        if len(channels) > 3:
+            raise Exception("Too many channels, select the channels manually")
+        return channels
+
     def view_input(self, model, input, output):
-        if isinstance(input, tuple):
-            self.update(input[0][0, self.channels].data)
-        else:
-            self.update(input[0, self.channels].data)
+        image = input[0] if isinstance(input, tuple) else input
+        channels = self.get_channels(image)
+        self.update(image[0, channels].data)
 
     def view_output(self, model, input, output):
-        if isinstance(output, tuple):
-            self.update(output[0][0, self.channels].data)
-        else:
-            self.update(output[0, self.channels].data)
+        image = output[0] if isinstance(output, tuple) else output
+        channels = self.get_channels(image)
+        self.update(image[0, channels].data)
 
     def update(self, screen):
 
