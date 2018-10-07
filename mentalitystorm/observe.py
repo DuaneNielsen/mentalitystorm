@@ -6,6 +6,7 @@ from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 from PIL import Image
 import torch
+import numpy as np
 
 
 """ Dispatcher allows dipatch to views.
@@ -166,16 +167,19 @@ class ImageViewer:
         self.channels = channels
 
     def get_channels(self, input):
-        channels = self.channels if self.channels is not None else range(input.shape[0])
-        if len(channels) > 3:
-            raise Exception("Too many channels, select the channels manually")
-        frame = input[channels].data
-        if frame.shape[0] == 2:
-            # if 2 channels, put an extra channel in
-            shape = 1, frame.shape[1], frame.shape[2]
-            dummy_channel = torch.zeros(shape)
-            frame = torch.cat((frame, dummy_channel), dim=0)
-        return frame
+        if type(input) == torch.Tensor:
+            channels = self.channels if self.channels is not None else range(input.shape[0])
+            if len(channels) > 3:
+                raise Exception("Too many channels, select the channels manually")
+            frame = input[channels].data
+            if frame.shape[0] == 2:
+                # if 2 channels, put an extra channel in
+                shape = 1, frame.shape[1], frame.shape[2]
+                dummy_channel = torch.zeros(shape)
+                frame = torch.cat((frame, dummy_channel), dim=0)
+            return frame
+        else:
+            return input
 
     def view_input(self, model, input, output):
         image = input[0] if isinstance(input, tuple) else input
@@ -189,6 +193,10 @@ class ImageViewer:
         if type(image) == torch.Tensor:
             if len(image.shape) == 4:
                 return image[0]
+            else:
+                return image
+        elif type(image) == np.ndarray:
+            return image
 
     def update(self, screen):
         if type(screen) == torch.Tensor:
