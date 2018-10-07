@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
 from .image import NumpyRGBWrapper
+from .config import config
 import cv2
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 from PIL import Image
+import torch
+
 
 """ Dispatcher allows dipatch to views.
 View's register here
@@ -163,24 +166,36 @@ class ImageViewer:
         self.channels = channels
 
     def get_channels(self, input):
-        channels = self.channels if self.channels is not None else range(input.shape[1])
+        channels = self.channels if self.channels is not None else range(input.shape[0])
         if len(channels) > 3:
             raise Exception("Too many channels, select the channels manually")
-        return channels
+        frame = input[channels].data
+        if frame.shape[0] == 2:
+            # if 2 channels, put an extra channel in
+            shape = 1, frame.shape[1], frame.shape[2]
+            dummy_channel = torch.zeros(shape)
+            frame = torch.cat((frame, dummy_channel), dim=0)
+        return frame
 
     def view_input(self, model, input, output):
         image = input[0] if isinstance(input, tuple) else input
-        channels = self.get_channels(image)
-        self.update(image[0, channels].data)
+        self.update(image)
 
     def view_output(self, model, input, output):
         image = output[0] if isinstance(output, tuple) else output
-        channels = self.get_channels(image)
-        self.update(image[0, channels].data)
+        self.update(image)
+
+    def strip_batch(self, image):
+        if type(image) == torch.Tensor:
+            if len(image.shape) == 4:
+                return image[0]
 
     def update(self, screen):
-
-        frame = NumpyRGBWrapper(screen, self.format)
+        if type(screen) == torch.Tensor:
+            screen = screen.cpu()
+        frame = self.strip_batch(screen)
+        frame = self.get_channels(frame)
+        frame = NumpyRGBWrapper(frame, self.format)
         frame = frame.getImage()
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         frame = cv2.resize(frame, self.screen_resolution)

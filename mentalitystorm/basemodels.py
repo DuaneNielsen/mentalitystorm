@@ -24,8 +24,9 @@ class MultiChannelAE(nn.Module):
         nn.Module.__init__(self)
         self.ae_l = []
         self.ch_l = []
+        self.decode_ch_l = []
 
-    def add_ae(self, auto_encoder, channels):
+    def add_ae(self, auto_encoder, channels, decoder_channels=None):
         """
 
         :param auto_encoder: the BaseAE to use
@@ -33,6 +34,7 @@ class MultiChannelAE(nn.Module):
         """
         self.ae_l.append(auto_encoder)
         self.ch_l.append(channels)
+        self.decode_ch_l.append(decoder_channels)
 
     def forward(self, x):
         z_l = []
@@ -41,6 +43,13 @@ class MultiChannelAE(nn.Module):
             z_l.append(z)
         result = torch.cat(z_l, dim=1)
         return result
+
+    def decode(self, z):
+        y = []
+        for ae, channels in zip(self.ae_l, self.decode_ch_l):
+            if channels is not None:
+                y.append(ae.decoder(z[:, channels, :, :]))
+        return torch.cat(y, dim=1)
 
 
 class DummyCoder(nn.Module):
