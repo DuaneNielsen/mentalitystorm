@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 import torch
-
+from .observe import ImageViewer
 
 class CoordConv:
     """
@@ -68,3 +68,11 @@ class SetRange(object):
         channels = self.channels if self.channels is not None else range(image.shape[2])
         image[self.x_start:self.x_stop, self.y_start:self.y_stop, channels] = self.color
         return image
+
+
+class ViewChannels(object):
+    def __init__(self, name, resolution, format=None, channels=None):
+        self.view = ImageViewer(name, resolution, format=None, channels=None)
+
+    def __call__(self, image):
+        self.view.update(image)
