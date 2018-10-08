@@ -36,6 +36,25 @@ class VCPolicy(Policy):
         return the_action.item()
 
 
+class VCPolicyMultiAE(Policy):
+    def __init__(self, v, c, t, device):
+        self.v = v.eval()
+        self.c = c.eval()
+        self.trans = t
+        self.device= device
+
+    def action(self, screen, observation):
+
+        obs = self.trans(observation)
+        obs = obs.unsqueeze(0).to(self.device)
+        latent = self.v(obs)
+
+        latent = latent.cpu().double().squeeze(3).squeeze(2)
+        action = self.c(latent)
+        _, the_action = action.max(1)
+        return the_action.item()
+
+
 class Rollout(Hookable):
     def __init__(self, env):
         Hookable.__init__(self)
@@ -77,11 +96,13 @@ class Rollout(Hookable):
 
 
 class RolloutGen(object):
-    def __init__(self, env, policy):
+    def __init__(self, env, policy, populate_screen=True, render_to_window=False):
         self.env = env
         self.policy = policy
         self.done = True
         self.action = None
+        self.populate_screen = populate_screen
+        self.render_to_window = render_to_window
 
     def __iter__(self):
         return self
@@ -90,9 +111,17 @@ class RolloutGen(object):
     def __next__(self):
         return self.next()
 
+    def render(self):
+        screen = None
+        if self.populate_screen:
+            screen = self.env.render(mode='rgb_array')
+        if self.render_to_window:
+            self.env.render()
+        return screen
+
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        screen = self.env.render(mode='rgb_array')
+        screen = self.render()
         action = self.policy.action(screen, observation)
         return screen, observation, reward, done, info, action
 
@@ -100,7 +129,7 @@ class RolloutGen(object):
 
         if self.done:
             observation = self.env.reset()
-            screen = self.env.render(mode='rgb_array')
+            screen = self.render()
             reward = 0
             self.done = False
             self.action = self.policy.action(screen, observation)

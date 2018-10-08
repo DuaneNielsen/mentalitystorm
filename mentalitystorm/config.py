@@ -139,6 +139,7 @@ class Config(metaclass=Singleton):
 
     def increment_run_id(self):
         self.increment('run_id')
+        return str(self.config['run_id'])
 
     def save(self, filename):
         with open(filename, 'w') as configfile:

@@ -11,7 +11,7 @@ from torchvision.transforms import functional as tvf
 
 from mentalitystorm.data_containers import ObservationAction, ActionEmbedding, DataSets, DataLoaders
 from mentalitystorm.policies import RolloutGen
-
+import numpy as np
 
 class Selector(ABC):
     @abstractmethod
@@ -96,23 +96,31 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
 
 
 class GymSimulatorDataset(torch.utils.data.Dataset):
-    def __init__(self, env, policy, length):
+    def __init__(self, env, policy, length, output_in_numpy_format=False):
         torch.utils.data.Dataset.__init__(self)
         self.length = length
         self.count = 0
         self.policy = policy
         self.rollout = RolloutGen(env, policy).__iter__()
         self.embed_action = ActionEmbedding(env)
+        self.output_in_numpy_format = output_in_numpy_format
 
     def __getitem__(self, index):
-        self.count += 1
+
         screen, observation, reward, done, info, action = self.rollout.next()
-        screen = tvf.to_tensor(screen)
-        observation = torch.Tensor(observation)
-        reward = torch.Tensor([reward])
-        done = torch.Tensor([done])
-        action = self.embed_action.tensor(action)
-        return screen, observation, action, reward, done, torch.Tensor([0])
+        latent = np.zeros(1)
+
+        if not self.output_in_numpy_format:
+            screen = tvf.to_tensor(screen)
+            observation = torch.Tensor(observation)
+            reward = torch.Tensor([reward])
+            done = torch.Tensor([done])
+            action = self.embed_action.tensor(action)
+            latent = torch.Tensor(latent)
+
+        self.count += 1
+
+        return screen, observation, action, reward, done, latent
 
     def __len__(self):
         return self.length

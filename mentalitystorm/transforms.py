@@ -72,7 +72,8 @@ class SetRange(object):
 
 class ViewChannels(object):
     def __init__(self, name, resolution, format=None, channels=None):
-        self.view = ImageViewer(name, resolution, format=None, channels=None)
+        self.view = ImageViewer(name, resolution, format=format, channels=channels)
 
     def __call__(self, image):
         self.view.update(image)
+        return image
