@@ -17,13 +17,13 @@ class ActionEncoder:
     update takes a tuple of ( numpyRGB, integer )
     and saves as tensors
     """
-    def __init__(self, env, name, model=None):
+    def __init__(self, env, name, action_embedding, model=None):
         self.model = model
         if model is not None:
             self.model.eval()
         self.session = 1
         self.sess_obs_act = None
-        self.action_embedding = ActionEmbedding(env)
+        self.action_embedding = action_embedding
         self.device = torch.device('cpu')
         self.name = name
         self.env = env

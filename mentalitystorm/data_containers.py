@@ -143,6 +143,44 @@ class ActionEmbedding():
         action_n[action] = 1.0
         return action_n
 
+    def embedding_to_action(self, index):
+        return index
+
+
+class ThreeKeyEmbedding:
+    """
+    Op      Policy    Environment
+    Noop    0         0
+    Right   1         3
+    Left    2         4
+    Fire    4         1
+    """
+    def __init__(self, env):
+        self.env = env
+        self.to_policy =      {0: 0, 3: 1, 4: 2, 1: 3}
+        self.to_environment = {0: 0, 1: 3, 2: 4, 3: 1}
+
+    def toPolicy(self, action):
+        return self.to_policy[action]
+
+    def toEnv(self, index):
+        return self.to_environment[index]
+
+    def tensor(self, action):
+        action_t = torch.zeros(4)
+        action = self.to_policy[action]
+        action_t[action] = 1.0
+        return action_t
+
+    def numpy(self, action):
+        action_n = np.zeros(self.env.action_space.n)
+        action = self.to_policy[action]
+        action_n[action] = 1.0
+        return action_n
+
+
+
+
 
 DataSets = namedtuple('DataSets', 'dev, train, test')
 DataLoaders = namedtuple('DataSets', 'dev, train, test')

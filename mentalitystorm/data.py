@@ -96,13 +96,13 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
 
 
 class GymSimulatorDataset(torch.utils.data.Dataset):
-    def __init__(self, env, policy, length, output_in_numpy_format=False):
+    def __init__(self, env, policy, length, action_embedding, output_in_numpy_format=False):
         torch.utils.data.Dataset.__init__(self)
         self.length = length
         self.count = 0
         self.policy = policy
         self.rollout = RolloutGen(env, policy).__iter__()
-        self.embed_action = ActionEmbedding(env)
+        self.embed_action = action_embedding
         self.output_in_numpy_format = output_in_numpy_format
 
     def __getitem__(self, index):

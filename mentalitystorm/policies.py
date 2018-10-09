@@ -37,11 +37,12 @@ class VCPolicy(Policy):
 
 
 class VCPolicyMultiAE(Policy):
-    def __init__(self, v, c, t, device):
+    def __init__(self, v, c, t, action_embedding, device):
         self.v = v.eval()
         self.c = c.eval()
         self.trans = t
-        self.device= device
+        self.device = device
+        self.action_embedding = action_embedding
 
     def action(self, screen, observation):
 
@@ -52,7 +53,7 @@ class VCPolicyMultiAE(Policy):
         latent = latent.cpu().double().squeeze(3).squeeze(2)
         action = self.c(latent)
         _, the_action = action.max(1)
-        return the_action.item()
+        return self.action_embedding.embedding_to_action(the_action.item())
 
 
 class Rollout(Hookable):
