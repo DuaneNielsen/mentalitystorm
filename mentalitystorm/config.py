@@ -54,6 +54,9 @@ class Config(metaclass=Singleton):
         self.DATA_PATH = os.environ.get('DATA_PATH', 'c:\data').replace('"', '')
         self.TORCH_DEVICE = os.environ.get('TORCH_DEVICE', 'cuda').replace('"', '')
 
+        if not Path(self.DATA_PATH).exists():
+            raise Exception('data not found, set DATA_PATH')
+
         self.configpath = Path(self.DATA_PATH) / 'config.json'
         if self.configpath.exists():
             self.config = Config.load(self.configpath.absolute())
