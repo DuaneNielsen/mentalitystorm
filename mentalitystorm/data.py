@@ -8,10 +8,10 @@ import torch.utils
 import torch.utils.data
 from torch.utils import data as data_utils
 from torchvision.transforms import functional as tvf
-
-from mentalitystorm.data_containers import ObservationAction, ActionEmbedding, DataSets, DataLoaders
+from mentalitystorm.data_containers import ObservationAction, DataSets, DataLoaders
 from mentalitystorm.policies import RolloutGen
 import numpy as np
+
 
 class Selector(ABC):
     @abstractmethod
@@ -69,10 +69,33 @@ class GymImageDataset(data_utils.Dataset):
         return input_image, target_image, reward
 
     def __len__(self):
+
         return len(self.pngs)
 
 
+def collate_action_observation(batch):
+    """
+    collation function for ActionEncoderDataset
+    :param batch: the batch
+    :return: a minibatch
+    """
+    # short longest to shortest
+    batch.sort(key=lambda x: x[2].shape[0], reverse=True)
+    minibatch = [list(t) for t in zip(*batch)]
+    # first frame has ridiculous high variance, so drop it, I
+    #clean = drop_first_frame(minibatch)
+    #delta = observation_deltas(clean)
+    return minibatch
+
+
 class ActionEncoderDataset(torch.utils.data.Dataset):
+    """
+    A dataset of observations, actions, rewards, and done
+    two additional slots are provided
+    screen - unfortunately the ai-gym atari observation space is sometimes different to the pixels returned
+    latent - if an encoder model for the observations space is available, then the encoded
+    space can be added here
+    """
     def __init__(self, directory):
         torch.utils.data.Dataset.__init__(self)
         self.path = Path(directory)
@@ -81,12 +104,20 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
             self.count += 1
 
     def __getitem__(self, index):
+
         np_filepath = self.path / str(index)
-        oa = ObservationAction.load(np_filepath.absolute())
-        framel = []
-        for frame in oa.screen:
-            framel.append(tvf.to_tensor(frame))
-        screen = torch.stack(framel, dim=0)
+        try:
+            oa = ObservationAction.load(np_filepath.absolute())
+            framel = []
+            if len(oa.screen) != 0:
+                for frame in oa.screen:
+                    framel.append(tvf.to_tensor(frame))
+                screen = torch.stack(framel, dim=0)
+            else:
+                screen = None
+        except Exception:
+            print(f'error while loading {str(np_filepath)}')
+            raise
 
         return screen, torch.Tensor(oa.observation), torch.Tensor(oa.action), \
                torch.Tensor(oa.reward), torch.Tensor(oa.done), torch.Tensor(oa.latent)

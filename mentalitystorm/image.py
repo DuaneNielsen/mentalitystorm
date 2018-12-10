@@ -13,6 +13,10 @@ class BaseImageWrapper():
             self.format = self.guess_format(image)
 
     def guess_format(self, image):
+
+            if image is None:
+                raise Exception('no image passed in')
+
             # guess it based on the screen
             if type(image) == torch.Tensor:
                 if image.shape[0] == 3:

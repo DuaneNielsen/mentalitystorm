@@ -71,3 +71,41 @@ class ConvVAE4Fixed(Storeable, BaseVAE):
             decoded = F.relu(self.d_bn3(self.d_conv3(decoded)))
             decoded = self.d_conv4(decoded)
             return torch.sigmoid(decoded)
+
+
+class LinearGaussianVAE(nn.Module):
+    def __init__(self, input_size, z_size):
+        super().__init__()
+
+        self.encoder = self.Encoder(input_size, z_size)
+        self.decoder = self.Decoder(input_size, z_size)
+        self.decoder = PassThroughWrapper(self.decoder)
+
+    class Encoder(nn.Module):
+        def __init__(self, input_size, z_size):
+            super().__init__()
+            self.mu = nn.Linear(input_size, z_size)
+            self.sigma = nn.Linear(input_size, z_size)
+
+        def forward(self, x):
+            mu = self.mu(x)
+            sigma = self.sigma(x)
+            if self.training:
+                z = torch.distributions.Normal(mu, sigma).rsample()
+            else:
+                z = mu
+            return z, mu, sigma
+
+    class Decoder(nn.Module):
+        def __init__(self, input_size, z_size):
+            super().__init__()
+            self.l1 = nn.Linear(z_size, input_size)
+
+        def forward(self, z):
+            decoded = self.l1(z)
+            return decoded
+
+    def forward(self, x):
+        encoded = self.encoder(x)
+        z, mu, sigma = self.decoder(encoded)
+        return z, mu, sigma

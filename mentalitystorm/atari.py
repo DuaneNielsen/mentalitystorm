@@ -48,15 +48,18 @@ class ActionEncoder:
             screen_t = tvf.to_tensor(rlstep.screen.copy()).detach().unsqueeze(0).to(self.device)
             screen_n = rlstep.screen
 
-        """ if a model is set, use it to compress the screen"""
-        if self.model is not None:
-            with torch.no_grad():
-                self.model.eval()
-            mu, logsigma = self.model.encoder(screen_t)
-            latent_n = mu.detach().cpu().numpy()
+            """ if a model is set, use it to compress the screen"""
+            if self.model is not None:
+                with torch.no_grad():
+                    self.model.eval()
+                mu, logsigma = self.model.encoder(screen_t.to(self.device))
+                latent_n = mu.detach().cpu().numpy()
 
-        a = self.action_embedding.numpy(action)
-        #act_n = a.cpu().numpy()
+        if action is not None:
+            a = self.action_embedding.numpy(action)
+        else:
+            a = self.action_embedding.start_numpy()
+
         act_n = np.expand_dims(a, axis=0)
 
         if self.oa is None:
@@ -103,16 +106,6 @@ class FrameByFrameDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.count
-
-
-def collate_action_observation(batch):
-    # short longest to shortest
-    batch.sort(key=lambda x: x[0].shape[0], reverse=True)
-    minibatch = [list(t) for t in zip(*batch)]
-    # first frame has ridiculous high variance, so drop it, I
-    #clean = drop_first_frame(minibatch)
-    #delta = observation_deltas(clean)
-    return minibatch
 
 
 def drop_first_frame(minibatch):

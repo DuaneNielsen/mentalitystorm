@@ -50,7 +50,7 @@ class ObservationAction:
         return self.length
 
     def end_episode(self):
-        self.action = np.stack(self.action_l, axis=0)
+        self.action = np.stack(self.action_l, axis=0).squeeze()
         self.reward = np.array(self.reward_l, dtype='float32')
         self.done = np.array(self.done_l, dtype='float32')
         if len(self.observation_l) != 0:
@@ -59,7 +59,7 @@ class ObservationAction:
             self.observation = []
 
         if len(self.latent_l) != 0:
-            self.latent = np.stack(self.latent_l, axis=0)
+            self.latent = np.stack(self.latent_l, axis=0).squeeze()
         else:
             self.latent = []
 
@@ -88,12 +88,14 @@ class ObservationAction:
         return state
 
     @staticmethod
-    def load(filename):
+    def load(filename, load_observation=False, load_screen=False):
         np_fn = str(filename) + '.np'
         mp4_fn = str(filename) + '.mp4'
         with open(np_fn, 'rb') as f:
             oa = pickle.load(f)
-        if Path(mp4_fn).exists():
+        if not load_observation:
+            oa.observation = []
+        if Path(mp4_fn).exists() and load_screen:
             reader = imageio.get_reader(mp4_fn)
             frames = [list(frame) for frame in reader]
             oa.screen = np.stack(frames, axis=0)
@@ -129,7 +131,10 @@ class ImageVideoWriter:
 RLStep = namedtuple('Step', 'screen, observation, action, reward, done, meta')
 
 
-class ActionEmbedding():
+class ActionEmbedding:
+    """
+    Simple one-hot embedding of the action space
+    """
     def __init__(self, env):
         self.env = env
 
@@ -146,6 +151,12 @@ class ActionEmbedding():
     def embedding_to_action(self, index):
         return index
 
+    def start_tensor(self):
+        return torch.zeros(self.env.action_space.n)
+
+    def start_numpy(self):
+        return np.zeros(self.env.action_space.n)
+
 
 class ThreeKeyEmbedding:
     """
@@ -155,16 +166,28 @@ class ThreeKeyEmbedding:
     Left    2         4
     Fire    4         1
     """
-    def __init__(self, env):
-        self.env = env
-        self.to_policy =      {0: 0, 3: 1, 4: 2, 1: 3}
-        self.to_environment = {0: 0, 1: 3, 2: 4, 3: 1}
+    def __init__(self):
+        self.to_env = np.array([0, 3, 4, 1, -1])
+        self.to_policy = self.get_reverse_lookup(self.to_env)
+
+    def get_reverse_lookup(self, a):
+        """
+        computes a permutation matrix for a lookup table
+        then inverts it to get the reverse lookup !
+        :param a: the lookup table to invert
+        :return: the reverse lookup table
+        """
+        N = a.size
+        rows = np.arange(N)
+        P = np.zeros((N, N), dtype=int)
+        P[rows, a] = 1
+        return np.where(P.T)[1]
 
     def toPolicy(self, action):
         return self.to_policy[action]
 
     def toEnv(self, index):
-        return self.to_environment[index]
+        return self.to_env[index]
 
     def tensor(self, action):
         action_t = torch.zeros(4)

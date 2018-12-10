@@ -99,5 +99,4 @@ class BaseVAE(nn.Module):
 
     def sample(self, eps):
         images = self.decoder(eps)
-        self.updateObserversWithImage('sample_image', images[0].data, training=self.training, always_write=True)
         return images

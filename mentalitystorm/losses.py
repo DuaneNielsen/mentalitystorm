@@ -73,6 +73,25 @@ class MseKldLoss(Lossable):
         self.execute_hooks(kld_loss=KLD, mse_loss=MSE)
         return MSE + KLD
 
+
+from torch.distributions import Uniform, kl_divergence
+
+
+class MSEKLDUniformLoss(Lossable):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, recon_x, low, high, x):
+        MSE = F.mse_loss(recon_x, x, reduction='elementwise_mean')
+
+        uniform = Uniform(torch.zeros_like(low), torch.ones_like(high))
+
+        KLD = kl_divergence(uniform, Uniform(low, high)).mean() / low.numel()
+
+        self.execute_hooks(kld_loss=KLD, mse_loss=MSE)
+
+        return KLD + MSE
+
 class GECOMseKldLoss(Lossable):
     def __init__(self, beta=1.0, cappa=0.99):
         super().__init__()

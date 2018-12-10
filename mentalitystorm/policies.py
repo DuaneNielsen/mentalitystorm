@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import torch
 from torchvision.transforms import ToTensor
 
-from mentalitystorm.data_containers import RLStep
+from mentalitystorm.data_containers import RLStep, ActionEmbedding
 from mentalitystorm.util import Hookable
 
 
@@ -78,17 +78,17 @@ class Rollout(Hookable):
         screen = self.env.render(mode='rgb_array')
         reward = 0
         done = False
-        action = policy.action(screen, observation)
+        action = None
         meta = {'episode': episode}
         self.execute_step_hook(RLStep(screen, observation, action, reward, done, meta))
 
         for t in range(max_timesteps):
 
+            action = policy.action(screen, observation)
             observation, reward, done, info = self.env.step(action)
             screen = self.env.render(mode='rgb_array')
-            action = policy.action(screen, observation)
 
-            self.execute_step_hook(RLStep(screen, None, action, reward, done, meta))
+            self.execute_step_hook(RLStep(screen, observation, action, reward, done, meta))
 
             if done:
                 print("Episode finished after {} timesteps".format(t+1))

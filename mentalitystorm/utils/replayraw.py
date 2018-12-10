@@ -1,5 +1,4 @@
-from mentalitystorm.atari import collate_action_observation
-from mentalitystorm.data import ActionEncoderDataset
+from mentalitystorm.data import ActionEncoderDataset, collate_action_observation
 import torch.utils.data as data_utils
 from mentalitystorm.observe import ImageViewer
 

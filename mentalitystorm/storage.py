@@ -90,7 +90,6 @@ class Storeable():
             metadata, args, state_dict = self.__getstate__()
             pickle.dump(metadata, f)
             pickle.dump(self, f)
-            self.updateObservers('save', filename, self.metadata)
         return path.name
 
     @staticmethod
