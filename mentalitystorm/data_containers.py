@@ -88,7 +88,7 @@ class ObservationAction:
         return state
 
     @staticmethod
-    def load(filename, load_observation=False, load_screen=False):
+    def load(filename, load_observation=True, load_screen=True):
         np_fn = str(filename) + '.np'
         mp4_fn = str(filename) + '.mp4'
         with open(np_fn, 'rb') as f:

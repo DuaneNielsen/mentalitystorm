@@ -60,7 +60,7 @@ class LoadModel(Init):
 
 
 class Run:
-    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, run_name=None, tensorboard=True,
+    def __init__(self, model, opt, loss_fn, data_package, trainer=None, tester=None, run_name=None,
                  weights_init_func=None):
         """
         :param model: the model to train
@@ -171,10 +171,13 @@ class Run:
     def __setstate__(self, state):
         self.__dict__ = state
 
-    def save(self):
-        file = config.datapath(self.run_id + '/epoch' + '%04d' % self.epochs + '.run')
+    def save(self, filename=None):
+        if filename is None:
+            file = Path(self.run_id + '/epoch' + '%04d' % self.epochs + '.run')
+        else:
+            file = Path(filename)
         import pickle
-        with open(file, 'wb') as f:
+        with file.open('wb') as f:
             pickle.dump(self, f)
 
     @staticmethod

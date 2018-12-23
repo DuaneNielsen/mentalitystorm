@@ -4,3 +4,4 @@ tabulate
 gym
 matplotlib
 intervaltree
+tqdm

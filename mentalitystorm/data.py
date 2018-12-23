@@ -82,10 +82,11 @@ def collate_action_observation(batch):
     # short longest to shortest
     batch.sort(key=lambda x: x[2].shape[0], reverse=True)
     minibatch = [list(t) for t in zip(*batch)]
-    # first frame has ridiculous high variance, so drop it, I
-    #clean = drop_first_frame(minibatch)
-    #delta = observation_deltas(clean)
     return minibatch
+
+
+def combine_action_latent(action, latent):
+    return [torch.cat(act_z, dim=1)[:-1] for act_z in zip(action, latent)]
 
 
 class ActionEncoderDataset(torch.utils.data.Dataset):
@@ -96,10 +97,12 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
     latent - if an encoder model for the observations space is available, then the encoded
     space can be added here
     """
-    def __init__(self, directory):
+    def __init__(self, directory, load_screen=True, load_observation=True):
         torch.utils.data.Dataset.__init__(self)
         self.path = Path(directory)
         self.count = 0
+        self.load_screen = load_screen
+        self.load_observation = load_observation
         for _ in self.path.glob('*.np'):
             self.count += 1
 
@@ -107,7 +110,8 @@ class ActionEncoderDataset(torch.utils.data.Dataset):
 
         np_filepath = self.path / str(index)
         try:
-            oa = ObservationAction.load(np_filepath.absolute())
+            oa = ObservationAction.load(np_filepath.absolute(), load_observation=self.load_observation,
+                                        load_screen=self.load_screen)
             framel = []
             if len(oa.screen) != 0:
                 for frame in oa.screen:

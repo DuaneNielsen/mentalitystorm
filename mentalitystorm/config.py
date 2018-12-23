@@ -47,28 +47,30 @@ class Singleton(type):
 
 
 class Config(metaclass=Singleton):
-    def __init__(self):
+    def __init__(self, DATA_PATH=None):
         # environment variables
         self.BUILD_TAG = os.environ.get('BUILD_TAG', 'build_tag').replace('"', '')
         self.GIT_COMMIT = os.environ.get('GIT_COMMIT', 'git_commit').replace('"', '')
-        self.DATA_PATH = os.environ.get('DATA_PATH', 'c:\data').replace('"', '')
         self.TORCH_DEVICE = os.environ.get('TORCH_DEVICE', 'cuda').replace('"', '')
 
-        self.configpath = Path(self.DATA_PATH) / 'config.json'
+        if DATA_PATH is not None:
+            self.DATA_PATH = DATA_PATH
+        else:
+            self.DATA_PATH = os.environ.get('DATA_PATH', 'c:\data').replace('"', '')
+
+        self.configpath = Path('run_config.json')
+
         if self.configpath.exists():
-            self.config = Config.load(self.configpath.absolute())
+            self.config = Config.load(str(self.configpath))
         else:
             self.config = {}
             self.config['run_id'] = 0
-            self.save(self.configpath.absolute())
+            self.save(str(self.configpath))
 
         logfile = self.getLogPath('most_improved.log')
         logging.basicConfig(filename=logfile.absolute())
 
         self.globaldata = {}
-
-        # variable to hold tensorboard global
-        self.tb = None
 
     def rolling_run_number(self):
         return "{0:0=3d}".format(self.config['run_id']%1000)
@@ -93,9 +95,9 @@ class Config(metaclass=Singleton):
 
     def tb_run_dir(self, param):
         if isinstance(param, torch.nn.Module):
-            return self.DATA_PATH + '/' + self.run_id_string(param)
+            return self.run_id_string(param)
         else:
-            return self.DATA_PATH + '/' + param
+            return param
 
     def device(self):
         #todo     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -115,14 +117,6 @@ class Config(metaclass=Singleton):
 
     def modelpath(self):
         return self.basepath() / 'models'
-
-    def dataset(self, datapath):
-        datadir = Path(self.DATA_PATH).joinpath(datapath)
-        dataset = torchvision.datasets.ImageFolder(
-            root=datadir.absolute(),
-            transform=TVT.Compose([TVT.ToTensor()])
-        )
-        return dataset
 
     def getLogPath(self, name):
         logfile = Path(self.DATA_PATH) / 'logs' / name
