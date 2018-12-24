@@ -251,3 +251,5 @@ class GUIProgressMeter:
         event, values = self.window.Read(timeout=0)
         self.train_pb.UpdateBar(0, 10)
         self.test_pb.UpdateBar(0, 10)
+        self.epoch_pb.UpdateBar(args.run.epoch.ix + 1, args.run.total_epochs)
+
